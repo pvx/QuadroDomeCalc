@@ -24,7 +24,7 @@ body {
 }
 
 .app {
-  max-width: 1400px;
+  max-width: 1600px;
   margin: 0 auto;
   padding: 12px 16px 48px;
 }
@@ -51,17 +51,20 @@ body {
 
 .layout {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 280px minmax(0, 1fr) 280px;
   gap: 12px;
   align-items: start;
 }
 
-.panel {
+.panel,
+.results {
   background: var(--panel);
   border: 1px solid var(--line);
   padding: 10px 12px 16px;
   position: sticky;
   top: 8px;
+  max-height: calc(100vh - 24px);
+  overflow: auto;
 }
 
 .stage {
@@ -258,6 +261,38 @@ body {
   gap: 0.6em;
 }
 
+.actions-top {
+  margin: 0.85em 0 0.4em;
+  padding-bottom: 0.85em;
+  border-bottom: 1px solid var(--line);
+}
+
+.span-compact {
+  margin-bottom: 0.2em;
+}
+
+.span-compact .field-lead {
+  display: none;
+}
+
+.span-compact dl {
+  min-height: 22px;
+  line-height: 22px;
+}
+
+.inline-hint {
+  display: inline;
+  margin-left: 4px;
+  margin-top: 0;
+}
+
+.results .stat {
+  margin-bottom: 0;
+  border: none;
+  padding: 0;
+  background: transparent;
+}
+
 .primary-btn {
   background: var(--accent);
   color: #fff;
@@ -324,16 +359,30 @@ body {
   border: 1px solid var(--line);
 }
 
+@media (max-width: 1100px) {
+  .layout {
+    grid-template-columns: 280px 1fr;
+  }
+
+  .results {
+    grid-column: 1 / -1;
+    position: static;
+    max-height: none;
+  }
+
+  .viewport-wrap {
+    height: 420px;
+  }
+}
+
 @media (max-width: 900px) {
   .layout {
     grid-template-columns: 1fr;
   }
 
-  .panel {
+  .panel,
+  .results {
     position: static;
-  }
-
-  .viewport-wrap {
-    height: 420px;
+    max-height: none;
   }
 }

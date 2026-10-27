@@ -5,7 +5,7 @@ import { createScene } from './view/scene.js';
 import { renderBudget } from './view/drawings.js';
 import { buildReport } from './report/stats.js';
 import { bindForm, readParams } from './ui/form.js';
-import { downloadOBJ } from './export/obj.js';
+import { downloadOBJ, downloadModelOBJ } from './export/obj.js';
 
 const form = document.getElementById('options');
 const reportEl = document.getElementById('report');
@@ -34,13 +34,17 @@ function recalculate(params) {
       pipeD: params.pipeD,
       beamsWidth: params.beamsWidth,
       beamsThickness: params.beamsThickness,
+      hubGapMm: params.hubGapMm,
+      panelGapMm: params.panelGapMm,
     });
     const loads = computeLoads(geom, products, {
       densityTimber: params.densityTimber,
       densitySteel: params.densitySteel,
       densityOsb: params.densityOsb,
       pipeWallMm: params.pipeWallMm,
+      pipeLengthMm: params.pipeLengthMm,
       osbThicknessMm: params.osbThicknessMm,
+      osbFaceHeightMm: params.osbFaceHeightMm,
       plateThicknessMm: params.plateThicknessMm,
       plateEmbedMm: params.plateEmbedMm,
       platesPerEnd: params.platesPerEnd,
@@ -63,8 +67,11 @@ function recalculate(params) {
     }
     model.products = {
       pipeD: products.pipeD * mm,
+      pipeLength: params.pipeLengthMm * mm,
       beamsWidth: products.beamsWidth * mm,
       beamsThickness: products.beamsThickness * mm,
+      osbThickness: params.osbThicknessMm * mm,
+      osbFaceHeight: params.osbFaceHeightMm * mm,
       edgeCuts: products.edgeProducts.map((e) => ({
         edgeId: e.edgeId,
         cutA: e.cutA * mm,
@@ -115,6 +122,14 @@ document.getElementById('btn-obj').addEventListener('click', () => {
   downloadOBJ(
     currentModel,
     `quadro-a${Math.round(currentGeom.params.a)}-n${currentGeom.params.n}.obj`,
+  );
+});
+
+document.getElementById('btn-model-obj').addEventListener('click', () => {
+  if (!currentModel?.products?.edgeCuts?.length || !currentGeom) return;
+  downloadModelOBJ(
+    currentModel,
+    `quadro-a${Math.round(currentGeom.params.a)}-n${currentGeom.params.n}-model.obj`,
   );
 });
 

@@ -25,9 +25,21 @@ export function buildReport(geom, products, loads) {
     lines.push(
       '',
       `Connection: ${products.connectionType}`,
-      `Pipe Ø: ${products.pipeD} mm`,
+      `Pipe Ø: ${products.pipeD} mm` +
+        (loads?.params?.pipeLengthMm != null
+          ? ` · L ${loads.params.pipeLengthMm} mm`
+          : ''),
       `Timber: ${products.beamsWidth} × ${products.beamsThickness} mm`,
+      ...(loads?.params?.osbThicknessMm != null
+        ? [
+            `OSB thickness: ${loads.params.osbThicknessMm} mm` +
+              (loads.params.osbFaceHeightMm != null
+                ? ` · face height ${loads.params.osbFaceHeightMm} mm`
+                : ''),
+          ]
+        : []),
       `Timber–pipe gap: ${products.hubGapMm ?? 5} mm`,
+      `OSB panel gap: ${products.panelGapMm ?? 8} mm`,
       `Cut-list sum (timber): ${fmt(products.stats.timberTotalMm)} mm`,
       `Edge types: ${products.stats.edgeTypeCount}`,
       `Face types: ${products.stats.faceTypeCount}`,
@@ -45,7 +57,7 @@ export function buildReport(geom, products, loads) {
       '—— Loads (masses / reactions) ——',
       loads.note,
       `ρ: pine ${lp.densityTimber}, steel ${lp.densitySteel}, OSB ${lp.densityOsb} kg/m³`,
-      `Pipe wall ${lp.pipeWallMm} mm · OSB ${lp.osbThicknessMm} mm · ` +
+      `Pipe wall ${lp.pipeWallMm} mm · L ${lp.pipeLengthMm} mm · OSB ${lp.osbThicknessMm} mm · ` +
         `plate ${lp.plateThicknessMm}×${lp.beamsWidth}×(${lp.plateEmbedMm}+tail) mm ×${lp.platesPerEnd}/end`,
       `Timber: ${fmt(m.timberKg)} kg`,
       `Hubs (hollow pipe ×${loads.volumes.hubCount}): ${fmt(m.hubKg)} kg`,

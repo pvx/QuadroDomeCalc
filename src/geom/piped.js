@@ -129,12 +129,14 @@ export function faceKey(sideLengths, anglesDeg) {
 
 /**
  * @param {ReturnType<import('./index.js').buildQuadroGeometry>} geom
- * @param {{ pipeD:number, beamsWidth:number, beamsThickness:number }} mats mm
+ * @param {{ pipeD:number, beamsWidth:number, beamsThickness:number, hubGapMm?:number, panelGapMm?:number }} mats mm
  */
 export function applyPipedProducts(geom, mats) {
   const pipeD = Math.max(1, mats.pipeD);
   const beamsWidth = Math.max(1, mats.beamsWidth);
   const beamsThickness = Math.max(1, mats.beamsThickness);
+  const hubGapMm = Math.max(0, mats.hubGapMm ?? HUB_GAP_MM);
+  const panelGapMm = Math.max(0, mats.panelGapMm ?? PANEL_GAP_MM);
   const pipeR = pipeD / 2;
   const { nodes, edges, triangles, normalAngles, sphere } = geom;
   const center = { x: 0, y: 0, z: sphere.c };
@@ -152,7 +154,7 @@ export function applyPipedProducts(geom, mats) {
     const radA = norm(sub(A, center));
     const radB = norm(sub(B, center));
 
-    const clear = pipeR + HUB_GAP_MM;
+    const clear = pipeR + hubGapMm;
     const cutA = hubCut(clear, dir, radA);
     const cutB = hubCut(clear, scale(dir, -1), radB);
     const cutLength = Math.max(1, chord - cutA - cutB);
@@ -247,7 +249,7 @@ export function applyPipedProducts(geom, mats) {
     center,
     beamsThickness,
     beamsWidth,
-    PANEL_GAP_MM,
+    panelGapMm,
   );
 
   const faceGroups = groupBy(faceProducts, (p) =>
@@ -333,11 +335,11 @@ export function applyPipedProducts(geom, mats) {
     pipeD,
     beamsWidth,
     beamsThickness,
-    hubGapMm: HUB_GAP_MM,
-    panelGapMm: PANEL_GAP_MM,
+    hubGapMm,
+    panelGapMm,
     note:
-      `Piped + timber: end face parallel to the pipe axis, gap ${HUB_GAP_MM} mm; ` +
-      `panels from the top of the timber, gap ${PANEL_GAP_MM} mm; bevels are an approximation. ` +
+      `Piped + timber: end face parallel to the pipe axis, gap ${hubGapMm} mm; ` +
+      `panels from the top of the timber, gap ${panelGapMm} mm; bevels are an approximation. ` +
       'Not a safety certificate. Angle between normals is not the machine cut angle.',
     edgeProducts,
     edgeGroups,

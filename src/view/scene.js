@@ -152,7 +152,13 @@ export function createScene(canvas) {
     }
 
     if (mode === 'cover' && products?.panels?.length) {
-      addCoverPanels(root, products.panels);
+      addCoverPanels(
+        root,
+        products.panels,
+        products.osbThickness ?? 0.01,
+        products.osbFaceHeight ?? 0,
+        sphereC,
+      );
     } else if (mode === 'cover') {
       const positions = [];
       const normals = [];
@@ -276,15 +282,34 @@ function pushQuad(pos, col, c, a, b, d, e) {
   pushVert(pos, col, e, c);
 }
 
-function addCoverPanels(root, panels) {
+function addCoverPanels(root, panels, thickness, faceHeight, sphereC) {
   const positions = [];
   const colors = [];
+  const lift = (p, n, d) => ({
+    x: p.x + n.x * d,
+    y: p.y + n.y * d,
+    z: p.z + n.z * d,
+  });
   for (const pan of panels) {
-    const [a, b, c] = pan.corners;
+    const [a0, b0, c0] = pan.corners;
     tmpColor.set(pan.color || '#9bb8cc');
+    const n = panelOutward(a0, b0, c0, sphereC);
+    // faceHeight shifts the whole plate; thickness is plate depth along normal
+    const a = lift(a0, n, faceHeight);
+    const b = lift(b0, n, faceHeight);
+    const c = lift(c0, n, faceHeight);
+    const t = lift(a0, n, faceHeight + thickness);
+    const u = lift(b0, n, faceHeight + thickness);
+    const v = lift(c0, n, faceHeight + thickness);
     pushVert(positions, colors, a, tmpColor);
-    pushVert(positions, colors, b, tmpColor);
     pushVert(positions, colors, c, tmpColor);
+    pushVert(positions, colors, b, tmpColor);
+    pushVert(positions, colors, t, tmpColor);
+    pushVert(positions, colors, u, tmpColor);
+    pushVert(positions, colors, v, tmpColor);
+    pushQuad(positions, colors, tmpColor, a, b, u, t);
+    pushQuad(positions, colors, tmpColor, b, c, v, u);
+    pushQuad(positions, colors, tmpColor, c, a, t, v);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -306,8 +331,31 @@ function addCoverPanels(root, panels) {
   );
 }
 
+function panelOutward(a, b, c, sphereC) {
+  const ab = { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z };
+  const ac = { x: c.x - a.x, y: c.y - a.y, z: c.z - a.z };
+  let n = {
+    x: ab.y * ac.z - ab.z * ac.y,
+    y: ab.z * ac.x - ab.x * ac.z,
+    z: ab.x * ac.y - ab.y * ac.x,
+  };
+  const L = Math.hypot(n.x, n.y, n.z) || 1;
+  n = { x: n.x / L, y: n.y / L, z: n.z / L };
+  const mid = {
+    x: (a.x + b.x + c.x) / 3,
+    y: (a.y + b.y + c.y) / 3,
+    z: (a.z + b.z + c.z) / 3,
+  };
+  const r = radialAt(mid, sphereC);
+  if (n.x * r.x + n.y * r.y + n.z * r.z < 0) {
+    n = { x: -n.x, y: -n.y, z: -n.z };
+  }
+  return n;
+}
+
 function addSolidFrame(root, verts, edges, products, sphereC) {
   const { beamsWidth, beamsThickness, pipeD, edgeCuts } = products;
+  const pipeLength = products.pipeLength ?? beamsWidth;
   const positions = [];
   const colors = [];
 
@@ -350,7 +398,7 @@ function addSolidFrame(root, verts, edges, products, sphereC) {
   );
 
   const pipeR = pipeD / 2;
-  const cylGeom = new THREE.CylinderGeometry(pipeR, pipeR, beamsWidth, 16);
+  const cylGeom = new THREE.CylinderGeometry(pipeR, pipeR, pipeLength, 16);
   const pipeMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
   const hubs = new THREE.InstancedMesh(cylGeom, pipeMat, verts.length);
   const dummy = new THREE.Object3D();

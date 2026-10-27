@@ -12,7 +12,9 @@ export const DEFAULT_LOADS = {
   densitySteel: 7850,
   densityOsb: 620,
   pipeWallMm: 5,
+  pipeLengthMm: 150,
   osbThicknessMm: 10,
+  osbFaceHeightMm: 0,
   plateThicknessMm: 8,
   plateEmbedMm: 150,
   platesPerEnd: 1,
@@ -42,6 +44,7 @@ export function computeLoads(geom, products, opts = {}) {
 
   const W = products.beamsWidth;
   const T = products.beamsThickness;
+  const pipeLen = p.pipeLengthMm > 0 ? p.pipeLengthMm : W;
   const gap = products.hubGapMm ?? 5;
   const pipeR = pipeD / 2;
 
@@ -57,7 +60,7 @@ export function computeLoads(geom, products, opts = {}) {
 
   const innerD = pipeD - 2 * wall;
   const hubVolOneMm3 =
-    (Math.PI / 4) * (pipeD * pipeD - innerD * innerD) * W;
+    (Math.PI / 4) * (pipeD * pipeD - innerD * innerD) * pipeLen;
   const hubs = (products.hubs || []).filter((h) => h.valence > 0);
   const hubKg = hubs.length * hubVolOneMm3 * MM3_TO_M3 * p.densitySteel;
 
