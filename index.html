@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Quadro Dome — geometry</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="head">
+        <h1>Quadro Dome Calculator</h1>
+        <p class="subtitle">
+          Geometry + Piped/timber cut list (Edges / Faces / Vertices). Not a strength check.
+        </p>
+      </header>
+
+      <div class="layout">
+        <aside class="panel">
+          <div class="mode-list" id="mode-list">
+            <button type="button" class="mode-btn" data-mode="base">Base</button>
+            <button type="button" class="mode-btn" data-mode="carcass">Carcass</button>
+            <button type="button" class="mode-btn" data-mode="schema">Schema</button>
+            <button type="button" class="mode-btn active" data-mode="cover">Cover</button>
+          </div>
+
+          <details class="stat" open>
+            <summary>Resulting</summary>
+            <pre class="report" id="report"></pre>
+          </details>
+
+          <div id="error" class="error" hidden></div>
+
+          <form id="options" class="options" autocomplete="off">
+            <h3 class="primary-section">Span between supports</h3>
+            <p class="field-lead">
+              To move the supports apart, change <strong>a</strong> — the axis-to-axis side
+              of the square (distance between adjacent supports).
+            </p>
+            <dl class="primary-field">
+              <dt>a, mm</dt>
+              <dd>
+                <input name="a" type="number" step="1" min="100" />
+                <span class="hint">← main frame dimension</span>
+              </dd>
+            </dl>
+            <dl>
+              <dt>Apex h, mm</dt>
+              <dd>
+                <input name="h" type="number" step="1" min="100" value="4183" />
+                <label class="hint">
+                  <input name="autoH" type="checkbox" checked />
+                  auto from a (drawing proportion)
+                </label>
+              </dd>
+            </dl>
+            <dl>
+              <dt>n cells</dt>
+              <dd>
+                <select name="n">
+                  <option value="4" selected>4</option>
+                  <option value="6">6</option>
+                  <option value="8">8</option>
+                  <option value="10">10</option>
+                  <option value="12">12</option>
+                </select>
+                <span class="hint">even mesh density</span>
+              </dd>
+            </dl>
+            <dl>
+              <dt>Mesh at supports</dt>
+              <dd>
+                <label class="hint">
+                  <input name="supportBrace" type="checkbox" checked />
+                  brace at supports
+                </label>
+              </dd>
+            </dl>
+
+            <h3>Diagonal link</h3>
+            <dl>
+              <dt>Diagonal, mm</dt>
+              <dd>
+                <input name="diagonalOnAxes" type="number" step="0.01" value="7071.07" />
+                <label class="hint">
+                  <input name="aFromDiag" type="checkbox" />
+                  set a from the diagonal (a = diag/√2)
+                </label>
+              </dd>
+            </dl>
+
+            <h3>Drawing reference</h3>
+            <p class="field-lead muted">Does not affect the mesh — CAD comparison only.</p>
+            <dl>
+              <dt>Outer</dt>
+              <dd><input name="outer" type="number" step="1" value="7010" /></dd>
+            </dl>
+            <dl>
+              <dt>Inner</dt>
+              <dd><input name="inner" type="number" step="1" value="6500" /></dd>
+            </dl>
+
+            <dl>
+              <dt>Analytical arches</dt>
+              <dd>
+                <label class="hint">
+                  <input name="analyticalArches" type="checkbox" />
+                  equal-angle (not in the mesh)
+                </label>
+              </dd>
+            </dl>
+
+            <h3 class="primary-section">Product options</h3>
+            <dl>
+              <dt>Connection type</dt>
+              <dd><select name="connType" disabled><option>Piped</option></select></dd>
+            </dl>
+            <dl>
+              <dt>Pipe diameter, mm</dt>
+              <dd><input name="pipeD" type="number" step="1" min="1" value="108" /></dd>
+            </dl>
+
+            <h3>Timber size</h3>
+            <dl>
+              <dt>Width, mm</dt>
+              <dd><input name="beamsWidth" type="number" step="1" min="1" value="150" /></dd>
+            </dl>
+            <dl>
+              <dt>Thickness, mm</dt>
+              <dd><input name="beamsThickness" type="number" step="1" min="1" value="50" /></dd>
+            </dl>
+
+            <h3 class="primary-section">Loads (self-weight + snow/wind)</h3>
+            <p class="field-lead muted">
+              Masses and support reactions. Not member forces and not a strength check.
+              Joint: rigid Piped connection, pine / steel / OSB3, plates into the timber.
+            </p>
+            <dl>
+              <dt>Pine density, kg/m³</dt>
+              <dd><input name="densityTimber" type="number" step="1" min="1" value="500" /></dd>
+            </dl>
+            <dl>
+              <dt>Steel density, kg/m³</dt>
+              <dd><input name="densitySteel" type="number" step="1" min="1" value="7850" /></dd>
+            </dl>
+            <dl>
+              <dt>OSB3 density, kg/m³</dt>
+              <dd><input name="densityOsb" type="number" step="1" min="1" value="620" /></dd>
+            </dl>
+            <dl>
+              <dt>Pipe wall, mm</dt>
+              <dd><input name="pipeWallMm" type="number" step="0.1" min="0.1" value="5" /></dd>
+            </dl>
+            <dl>
+              <dt>OSB thickness, mm</dt>
+              <dd><input name="osbThicknessMm" type="number" step="0.1" min="0.1" value="10" /></dd>
+            </dl>
+            <dl>
+              <dt>Plate t, mm</dt>
+              <dd><input name="plateThicknessMm" type="number" step="0.1" min="0.1" value="8" /></dd>
+            </dl>
+            <dl>
+              <dt>Plate embed, mm</dt>
+              <dd><input name="plateEmbedMm" type="number" step="1" min="0" value="150" /></dd>
+            </dl>
+            <dl>
+              <dt>Plates per end</dt>
+              <dd><input name="platesPerEnd" type="number" step="1" min="0" value="1" /></dd>
+            </dl>
+            <dl>
+              <dt>Snow, kPa</dt>
+              <dd><input name="snowKPa" type="number" step="0.05" min="0" value="0" /></dd>
+            </dl>
+            <dl>
+              <dt>Wind +X, kPa</dt>
+              <dd><input name="windKPa" type="number" step="0.05" min="0" value="0" /></dd>
+            </dl>
+
+            <div class="actions">
+              <button type="button" id="btn-recalc" class="primary-btn">Recalculate</button>
+              <button type="button" id="btn-obj" class="linkish">Download frame .obj</button>
+            </div>
+          </form>
+        </aside>
+
+        <div class="stage">
+          <main class="viewport-wrap">
+            <div class="viewport-legend">
+              <span class="leg leg-a">a — between supports</span>
+              <span class="leg leg-d">diagonal</span>
+              <span class="leg leg-h">h — height</span>
+            </div>
+            <canvas id="viewport"></canvas>
+          </main>
+          <section class="budget" id="budget"></section>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
