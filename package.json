@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test src/geom/*.test.js src/export/*.test.js"
+    "test": "node --test src/geom/*.test.js src/export/*.test.js src/view/*.test.js"
   },
   "dependencies": {
     "three": "^0.170.0"

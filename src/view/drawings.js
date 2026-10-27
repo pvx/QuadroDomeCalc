@@ -1,5 +1,55 @@
 /** Budget canvases: Edges (end-cut), Faces (sides+angles), Vertices (2-plane). */
 
+/** Standard OSB sheet, mm (long × short). */
+export const OSB_SHEET_MM = { long: 2500, short: 1250 };
+
+/**
+ * Axis cut length → overall envelope along the board (mm).
+ * End face tilted by α,β from square across the width face.
+ */
+export function strutOverallLength(cutLength, width, degA, degB) {
+  const rad = (d) => ((d || 0) * Math.PI) / 180;
+  return (
+    cutLength +
+    (width / 2) * (Math.tan(rad(degA)) + Math.tan(rad(degB)))
+  );
+}
+
+/**
+ * Flat triangle from side lengths; rotate longest side along +x;
+ * place a vertex at sheet origin. Returns mm coords + sheet size.
+ */
+export function layoutPanelOnSheet(sideLengths, sheet = OSB_SHEET_MM) {
+  const pts = triangleFromSides(sideLengths);
+  const edges = [
+    { i: 0, j: 1, len: sideLengths[0] },
+    { i: 1, j: 2, len: sideLengths[1] },
+    { i: 2, j: 0, len: sideLengths[2] },
+  ];
+  edges.sort((a, b) => b.len - a.len);
+  const { i, j } = edges[0];
+  const dx = pts[j].x - pts[i].x;
+  const dy = pts[j].y - pts[i].y;
+  const ang = Math.atan2(dy, dx);
+  const cos = Math.cos(-ang);
+  const sin = Math.sin(-ang);
+  let rot = pts.map((p) => ({
+    x: p.x * cos - p.y * sin,
+    y: p.x * sin + p.y * cos,
+  }));
+  // flip so the third vertex has y ≥ 0 (into the sheet)
+  const k = 3 - i - j;
+  if (rot[k].y < 0) rot = rot.map((p) => ({ x: p.x, y: -p.y }));
+  const minX = Math.min(...rot.map((p) => p.x));
+  const minY = Math.min(...rot.map((p) => p.y));
+  const panel = rot.map((p) => ({ x: p.x - minX, y: p.y - minY }));
+  return {
+    panel,
+    sheetW: sheet.long,
+    sheetH: sheet.short,
+  };
+}
+
 export function renderBudget(container, geom, products) {
   container.innerHTML = '';
   if (!products) {
@@ -13,10 +63,10 @@ export function renderBudget(container, geom, products) {
   container.appendChild(note);
 
   container.appendChild(
-    section('Edges (struts / cut list)', products.edgeGroups, drawStrut, 280, 150),
+    section('Edges (struts / cut list)', products.edgeGroups, drawStrut, 420, 210),
   );
   container.appendChild(
-    section('Faces (panels)', products.faceGroups, drawFace, 280, 160),
+    section('Faces (panels)', products.faceGroups, drawFace, 420, 240),
   );
   container.appendChild(
     section('Vertices (Piped hubs)', products.hubGroups, drawHub, 300, 200),
@@ -64,7 +114,15 @@ function summarize(g) {
   if (s.cutLength != null) {
     const a = Math.round(s.endCutDegA ?? 0);
     const b = Math.round(s.endCutDegB ?? 0);
-    return `L=${Math.round(s.cutLength)} mm · cut ${a}°/${b}°`;
+    const overall = Math.round(
+      strutOverallLength(s.cutLength, s.width, s.endCutDegA, s.endCutDegB),
+    );
+    const axis = Math.round(s.cutLength);
+    const len =
+      overall === axis
+        ? `L=${axis} mm`
+        : `габ.=${overall} · ось=${axis} mm`;
+    return `${len} · ${Math.round(s.width)}×${Math.round(s.thickness)} · cut ${a}°/${b}°`;
   }
   if (s.sideLengths) {
     return (
@@ -86,25 +144,35 @@ function drawStrut(canvas, group) {
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, W, H);
 
-  const thickPx = Math.max(10, Math.min(32, (s.thickness / s.width) * 48));
-  const y = H / 2 - 4;
-  const x0 = 36;
-  const x1 = W - 36;
-  const lenPx = x1 - x0;
+  const degA = s.endCutDegA ?? 0;
+  const degB = s.endCutDegB ?? 0;
+  const overall = strutOverallLength(s.cutLength, s.width, degA, degB);
+  const tipA = (s.width / 2) * Math.tan((degA * Math.PI) / 180);
+  const tipB = (s.width / 2) * Math.tan((degB * Math.PI) / 180);
+  const tipAFull = tipA * 2;
+  const tipBFull = tipB * 2;
 
-  // Offset of tip from square end along length, from endCutDeg
-  const tip = (deg) =>
-    Math.min(lenPx * 0.22, Math.tan(((deg || 0) * Math.PI) / 180) * (thickPx / 2));
-  const tA = tip(s.endCutDegA);
-  const tB = tip(s.endCutDegB);
+  // Exaggerated section height so the bevel reads; labels stay true mm.
+  const padL = 48;
+  const padR = 88;
+  const padT = 36;
+  const padB = 42;
+  const faceH = Math.max(28, Math.min(56, H * 0.28));
+  const scaleX = (W - padL - padR) / (overall || 1);
+  const yTop = padT + 8;
+  const yBot = yTop + faceH;
+
+  // Corners in px: long edge on top
+  const TL = { x: padL, y: yTop };
+  const TR = { x: padL + overall * scaleX, y: yTop };
+  const BL = { x: padL + tipAFull * scaleX, y: yBot };
+  const BR = { x: padL + (overall - tipBFull) * scaleX, y: yBot };
 
   ctx.beginPath();
-  ctx.moveTo(x0 + tA, y - thickPx / 2);
-  ctx.lineTo(x1 - tB, y - thickPx / 2);
-  ctx.lineTo(x1, y);
-  ctx.lineTo(x1 - tB, y + thickPx / 2);
-  ctx.lineTo(x0 + tA, y + thickPx / 2);
-  ctx.lineTo(x0, y);
+  ctx.moveTo(TL.x, TL.y);
+  ctx.lineTo(TR.x, TR.y);
+  ctx.lineTo(BR.x, BR.y);
+  ctx.lineTo(BL.x, BL.y);
   ctx.closePath();
   ctx.fillStyle = '#f0f4f7';
   ctx.fill();
@@ -112,13 +180,37 @@ function drawStrut(canvas, group) {
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  ctx.fillStyle = '#333';
-  ctx.font = '12px Tahoma, sans-serif';
-  ctx.fillText(`${Math.round(s.cutLength)} mm`, (x0 + x1) / 2 - 28, y - thickPx / 2 - 10);
+  // Width dim (left)
+  dimV(ctx, padL - 18, yTop, yBot, `${Math.round(s.width)}`);
 
-  ctx.font = '11px Tahoma, sans-serif';
-  ctx.fillText(`${Math.round(s.endCutDegA ?? 0)}°`, 6, y + 4);
-  ctx.fillText(`${Math.round(s.endCutDegB ?? 0)}°`, W - 28, y + 4);
+  // Overall length dim (above)
+  dimH(ctx, TL.x, TR.x, yTop - 14, `${Math.round(overall)}`);
+
+  // Axis length when it differs
+  if (Math.round(overall) !== Math.round(s.cutLength)) {
+    const ax0 = padL + tipA * scaleX;
+    const ax1 = padL + (overall - tipB) * scaleX;
+    dimH(ctx, ax0, ax1, yBot + 16, `ось ${Math.round(s.cutLength)}`);
+  }
+
+  // End-cut angle arcs
+  drawEndAngle(ctx, BL, TL, degA, true);
+  drawEndAngle(ctx, BR, TR, degB, false);
+
+  // Thickness stub (end view) on the right
+  const tw = Math.max(10, Math.min(22, (s.thickness / s.width) * faceH));
+  const tx0 = W - padR + 28;
+  ctx.fillStyle = '#e8eef3';
+  ctx.strokeStyle = group.color;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.rect(tx0, yTop, tw, faceH);
+  ctx.fill();
+  ctx.stroke();
+  dimH(ctx, tx0, tx0 + tw, yBot + 14, `${Math.round(s.thickness)}`);
+  ctx.fillStyle = '#666';
+  ctx.font = '9px Tahoma, sans-serif';
+  ctx.fillText('торец', tx0 - 4, yTop - 4);
 
   ctx.fillStyle = '#666';
   ctx.font = '10px Tahoma, sans-serif';
@@ -129,8 +221,81 @@ function drawStrut(canvas, group) {
   );
 }
 
+function drawEndAngle(ctx, shortPt, longPt, deg, left) {
+  const label = `${Math.round(deg)}°`;
+  ctx.strokeStyle = '#c0392b';
+  ctx.fillStyle = '#c0392b';
+  ctx.lineWidth = 1;
+  // reference square-cut (vertical) from short tip
+  const refLen = 18;
+  const vx = shortPt.x;
+  const vy0 = shortPt.y;
+  const vy1 = shortPt.y - refLen;
+  ctx.beginPath();
+  ctx.moveTo(vx, vy0);
+  ctx.lineTo(vx, vy1);
+  ctx.stroke();
+  // arc toward the cut edge
+  const cutAng = Math.atan2(longPt.y - shortPt.y, longPt.x - shortPt.x);
+  const start = -Math.PI / 2;
+  const end = cutAng;
+  const r = 14;
+  ctx.beginPath();
+  if (left) ctx.arc(shortPt.x, shortPt.y, r, Math.min(start, end), Math.max(start, end));
+  else ctx.arc(shortPt.x, shortPt.y, r, Math.min(start, end), Math.max(start, end));
+  ctx.stroke();
+  ctx.font = '11px Tahoma, sans-serif';
+  ctx.fillText(label, shortPt.x + (left ? -36 : 8), shortPt.y - 8);
+}
+
+function dimH(ctx, x0, x1, y, text) {
+  ctx.strokeStyle = '#1a73e8';
+  ctx.fillStyle = '#1a73e8';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x0, y);
+  ctx.lineTo(x1, y);
+  ctx.moveTo(x0, y - 4);
+  ctx.lineTo(x0, y + 4);
+  ctx.moveTo(x1, y - 4);
+  ctx.lineTo(x1, y + 4);
+  ctx.stroke();
+  ctx.font = '11px Tahoma, sans-serif';
+  const tw = ctx.measureText(text).width;
+  ctx.fillText(text, (x0 + x1) / 2 - tw / 2, y - 4);
+}
+
+function dimV(ctx, x, y0, y1, text) {
+  ctx.strokeStyle = '#1a73e8';
+  ctx.fillStyle = '#1a73e8';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x, y0);
+  ctx.lineTo(x, y1);
+  ctx.moveTo(x - 4, y0);
+  ctx.lineTo(x + 4, y0);
+  ctx.moveTo(x - 4, y1);
+  ctx.lineTo(x + 4, y1);
+  ctx.stroke();
+  ctx.font = '11px Tahoma, sans-serif';
+  ctx.fillText(text, x - 28, (y0 + y1) / 2 + 4);
+}
+
 function fmtB(v) {
   return Math.round(v);
+}
+
+function triangleFromSides(sides) {
+  const a = sides[0];
+  const b = sides[1];
+  const c = sides[2];
+  const x2 = (c * c + a * a - b * b) / (2 * a);
+  const y2 = Math.sqrt(Math.max(0, c * c - x2 * x2));
+  return [
+    { x: 0, y: 0 },
+    { x: a, y: 0 },
+    { x: x2, y: y2 },
+  ];
 }
 
 function drawFace(canvas, group) {
@@ -143,33 +308,46 @@ function drawFace(canvas, group) {
   ctx.fillRect(0, 0, W, H);
 
   const sides = s.sideLengths;
-  const a = sides[0];
-  const b = sides[1];
-  const c = sides[2];
-  const x2 = (c * c + a * a - b * b) / (2 * a);
-  const y2 = Math.sqrt(Math.max(0, c * c - x2 * x2));
-  const pts = [
-    { x: 0, y: 0 },
-    { x: a, y: 0 },
-    { x: x2, y: -y2 },
+  const { panel, sheetW, sheetH } = layoutPanelOnSheet(sides);
+
+  const maxX = Math.max(sheetW, ...panel.map((p) => p.x));
+  const maxY = Math.max(sheetH, ...panel.map((p) => p.y));
+  const pad = 28;
+  const scale = Math.min((W - pad * 2) / (maxX || 1), (H - pad * 2 - 14) / (maxY || 1));
+
+  const toPx = (p) => ({
+    x: pad + p.x * scale,
+    y: H - pad - 12 - p.y * scale,
+  });
+
+  const sheetPx = [
+    toPx({ x: 0, y: 0 }),
+    toPx({ x: sheetW, y: 0 }),
+    toPx({ x: sheetW, y: sheetH }),
+    toPx({ x: 0, y: sheetH }),
   ];
 
-  const pad = 36;
-  const xs = pts.map((p) => p.x);
-  const ys = pts.map((p) => p.y);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
-  const scale = Math.min(
-    (W - pad * 2) / (maxX - minX || 1),
-    (H - pad * 2) / (maxY - minY || 1),
-  );
-  const mapped = pts.map((p) => ({
-    x: pad + (p.x - minX) * scale,
-    y: H - pad - (p.y - minY) * scale,
-  }));
+  ctx.beginPath();
+  ctx.moveTo(sheetPx[0].x, sheetPx[0].y);
+  for (let i = 1; i < 4; i++) ctx.lineTo(sheetPx[i].x, sheetPx[i].y);
+  ctx.closePath();
+  ctx.fillStyle = '#f7f5ef';
+  ctx.fill();
+  ctx.strokeStyle = '#9aa3ad';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([5, 4]);
+  ctx.stroke();
+  ctx.setLineDash([]);
 
+  ctx.fillStyle = '#666';
+  ctx.font = '10px Tahoma, sans-serif';
+  ctx.fillText(
+    `OSB ${sheetW}×${sheetH}`,
+    sheetPx[3].x + 4,
+    sheetPx[3].y + 12,
+  );
+
+  const mapped = panel.map(toPx);
   const cx = (mapped[0].x + mapped[1].x + mapped[2].x) / 3;
   const cy = (mapped[0].y + mapped[1].y + mapped[2].y) / 3;
 
@@ -184,6 +362,13 @@ function drawFace(canvas, group) {
   ctx.lineWidth = 2;
   ctx.stroke();
 
+  // Remap side labels to current vertex order after rotation
+  const edgeLens = [0, 1, 2].map((i) => {
+    const p = panel[i];
+    const q = panel[(i + 1) % 3];
+    return Math.hypot(q.x - p.x, q.y - p.y);
+  });
+
   ctx.fillStyle = '#333';
   ctx.font = '11px Tahoma, sans-serif';
   for (let i = 0; i < 3; i++) {
@@ -193,18 +378,33 @@ function drawFace(canvas, group) {
     const my = (p.y + q.y) / 2;
     const ox = (mx - cx) * 0.15;
     const oy = (my - cy) * 0.15;
-    ctx.fillText(`${Math.round(sides[i])}`, mx + ox - 12, my + oy - 2);
+    ctx.fillText(`${Math.round(edgeLens[i])}`, mx + ox - 12, my + oy - 2);
   }
 
-  const angs = s.anglesDeg || [];
+  const angs = cornerAnglesDeg(panel);
   ctx.font = '10px Tahoma, sans-serif';
   for (let i = 0; i < 3; i++) {
     const p = mapped[i];
-    const label = `${(angs[i] ?? 0).toFixed(1)}°`;
+    const label = `${angs[i].toFixed(1)}°`;
     const lx = p.x + (cx - p.x) * 0.28;
     const ly = p.y + (cy - p.y) * 0.28;
     ctx.fillText(label, lx - 12, ly + 3);
   }
+}
+
+function cornerAnglesDeg(pts) {
+  return [0, 1, 2].map((i) => {
+    const prev = pts[(i + 2) % 3];
+    const cur = pts[i];
+    const next = pts[(i + 1) % 3];
+    const u = { x: prev.x - cur.x, y: prev.y - cur.y };
+    const v = { x: next.x - cur.x, y: next.y - cur.y };
+    const lu = Math.hypot(u.x, u.y);
+    const lv = Math.hypot(v.x, v.y);
+    if (lu < 1e-12 || lv < 1e-12) return 0;
+    const cos = Math.min(1, Math.max(-1, (u.x * v.x + u.y * v.y) / (lu * lv)));
+    return (Math.acos(cos) * 180) / Math.PI;
+  });
 }
 
 function drawHub(canvas, group) {
