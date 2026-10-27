@@ -74,8 +74,9 @@ body {
 .viewport-wrap {
   background: var(--canvas);
   border: 1px solid var(--line);
-  min-height: 520px;
-  height: min(70vh, 640px);
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  height: auto;
   position: relative;
 }
 
@@ -114,6 +115,8 @@ body {
 }
 
 #viewport {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   display: block;
@@ -368,10 +371,6 @@ body {
     grid-column: 1 / -1;
     position: static;
     max-height: none;
-  }
-
-  .viewport-wrap {
-    height: 420px;
   }
 }
 

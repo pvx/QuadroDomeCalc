@@ -24,7 +24,7 @@ export function addDimensions(root, { a, h }) {
     group,
     new THREE.Vector3(-half, yOff, 0),
     new THREE.Vector3(half, yOff, 0),
-    `${aMm} mm · a (supports)`,
+    `${aMm} mm`,
     blue,
     a,
   );
@@ -36,7 +36,7 @@ export function addDimensions(root, { a, h }) {
     group,
     new THREE.Vector3(xOff, -half, 0),
     new THREE.Vector3(xOff, half, 0),
-    `${aMm} mm · a`,
+    `${aMm} mm`,
     blue,
     a,
   );
@@ -48,10 +48,9 @@ export function addDimensions(root, { a, h }) {
     group,
     new THREE.Vector3(-half, -half, 0.01),
     new THREE.Vector3(half, half, 0.01),
-    `${diagMm} mm · diagonal`,
+    `${diagMm} mm`,
     orange,
     a,
-    { lift: Math.max(a * 0.04, 0.12) },
   );
 
   // Height h
@@ -60,7 +59,7 @@ export function addDimensions(root, { a, h }) {
     group,
     new THREE.Vector3(hx, 0, 0),
     new THREE.Vector3(hx, 0, h),
-    `${hMm} mm · h`,
+    `${hMm} mm`,
     green,
     a,
   );
@@ -91,7 +90,7 @@ function addGuide(group, a, b, color) {
   group.add(line);
 }
 
-function addDimLine(group, from, to, text, color, spanHint, opts = {}) {
+function addDimLine(group, from, to, text, color, spanHint) {
   const mat = new THREE.LineBasicMaterial({ color });
   group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([from, to]), mat));
 
@@ -116,35 +115,23 @@ function addDimLine(group, from, to, text, color, spanHint, opts = {}) {
   }
 
   const mid = new THREE.Vector3().addVectors(from, to).multiplyScalar(0.5);
-  if (opts.lift) mid.z += opts.lift;
-  if (Math.abs(dir.z) < 0.5) {
-    mid.add(new THREE.Vector3(-dir.y, dir.x, 0).normalize().multiplyScalar(0.2));
-  } else {
-    mid.x += 0.22;
-  }
-
-  group.add(makeSpriteLabel(text, mid, Math.max(spanHint * 0.24, 1.0), color));
+  group.add(makeSpriteLabel(text, mid, Math.max(spanHint * 0.18, 0.7), color));
 }
 
 function makeSpriteLabel(text, position, scale, color) {
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
-  const pad = 12;
-  ctx.font = '600 28px Tahoma, Verdana, sans-serif';
+  const fontSize = 24;
+  ctx.font = `600 ${fontSize}px Tahoma, Verdana, sans-serif`;
   const tw = ctx.measureText(text).width;
+  const pad = 4;
   canvas.width = Math.ceil(tw + pad * 2);
-  canvas.height = 46;
-  ctx.font = '600 28px Tahoma, Verdana, sans-serif';
-  ctx.fillStyle = 'rgba(255,255,255,0.94)';
-  roundRect(ctx, 0, 0, canvas.width, canvas.height, 8);
-  ctx.fill();
-  ctx.strokeStyle = '#' + new THREE.Color(color).getHexString();
-  ctx.lineWidth = 3;
-  roundRect(ctx, 1.5, 1.5, canvas.width - 3, canvas.height - 3, 7);
-  ctx.stroke();
-  ctx.fillStyle = '#1a1d21';
+  canvas.height = Math.ceil(fontSize + pad * 2);
+  ctx.font = `600 ${fontSize}px Tahoma, Verdana, sans-serif`;
+  ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(text, pad, canvas.height / 2);
+  ctx.fillStyle = '#' + new THREE.Color(color).getHexString();
+  ctx.fillText(text, canvas.width / 2, canvas.height / 2);
 
   const map = new THREE.CanvasTexture(canvas);
   map.colorSpace = THREE.SRGBColorSpace;
@@ -158,18 +145,8 @@ function makeSpriteLabel(text, position, scale, color) {
   );
   sprite.position.copy(position);
   const aspect = canvas.width / canvas.height;
-  const h = scale * 0.26;
+  const h = scale * 0.22;
   sprite.scale.set(h * aspect, h, 1);
   sprite.renderOrder = 20;
   return sprite;
-}
-
-function roundRect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
 }
