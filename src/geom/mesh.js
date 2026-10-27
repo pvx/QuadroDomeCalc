@@ -38,7 +38,9 @@ export function buildSymmetricXYMesh(sphere, n) {
       const a10 = qIndex(i + 1, j);
       const a01 = qIndex(i, j + 1);
       const a11 = qIndex(i + 1, j + 1);
-      if ((i + j) % 2 === 0) {
+      // Apex cell (0,0): use axis diamond (a10–a01), not apex→corner diagonal.
+      // Skip when half===1 (n=2): that cell is the support corner, flipped later.
+      if ((i + j) % 2 === 0 && !(i === 0 && j === 0 && half > 1)) {
         qFaces.push([a00, a10, a11], [a00, a11, a01]);
       } else {
         qFaces.push([a00, a10, a01], [a10, a11, a01]);

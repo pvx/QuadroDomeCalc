@@ -71,6 +71,48 @@ describe('symmetric XY mesh', () => {
     assert.ok(g.arches.midHeightIdeal > 0);
   });
 
+  it('apex cell uses axis diamond, not apex–corner diagonals', () => {
+    const n = 4;
+    const s = a / n;
+    const g = buildQuadroGeometry({ a, h, n, units: 'mm', supportBrace: false });
+
+    const hasEdge = (i, j) =>
+      g.edges.some(
+        (e) =>
+          (e.startNodeId === i && e.endNodeId === j) ||
+          (e.startNodeId === j && e.endNodeId === i),
+      );
+
+    const findXY = (x, y) => {
+      const id = g.nodes.findIndex(
+        (p) => Math.abs(p.x - x) < 1e-6 && Math.abs(p.y - y) < 1e-6,
+      );
+      assert.ok(id >= 0, `node ${x},${y}`);
+      return id;
+    };
+
+    const apex = findXY(0, 0);
+    const px = findXY(s, 0);
+    const py = findXY(0, s);
+    const nx = findXY(-s, 0);
+    const ny = findXY(0, -s);
+
+    assert.ok(hasEdge(px, py), 'diamond +x–+y');
+    assert.ok(hasEdge(py, nx), 'diamond +y–−x');
+    assert.ok(hasEdge(nx, ny), 'diamond −x–−y');
+    assert.ok(hasEdge(ny, px), 'diamond −y–+x');
+
+    for (const [sx, sy] of [
+      [1, 1],
+      [1, -1],
+      [-1, 1],
+      [-1, -1],
+    ]) {
+      const corner = findXY(sx * s, sy * s);
+      assert.ok(!hasEdge(apex, corner), `no apex–(${sx}s,${sy}s)`);
+    }
+  });
+
   it('supportBrace flips corner diagonal on all 4 supports', () => {
     const n = 8;
     const step = a / n;
