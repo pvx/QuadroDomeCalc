@@ -1,8 +1,14 @@
 import * as THREE from 'three';
+import {
+  sphereFromSupports,
+  archMidHeight,
+  archMidHeightY,
+} from '../geom/sphere.js';
 
 /**
  * Overall dimensions (scene units = meters; labels in mm).
  * a — length between supports on X; b — width on Y; h — apex height.
+ * fa / fb — mid-arch node heights on sides a and b.
  */
 export function addDimensions(root, { a, b = a, h }) {
   const group = new THREE.Group();
@@ -16,9 +22,15 @@ export function addDimensions(root, { a, b = a, h }) {
   const orange = 0xe67e22;
   const green = 0x27ae60;
 
+  const sphere = sphereFromSupports(a, h, b);
+  const fa = archMidHeightY(sphere); // mid node on side a (y=±b/2)
+  const fb = archMidHeight(sphere); // mid node on side b (x=±a/2)
+
   const aMm = formatMm(a * 1000);
   const bMm = formatMm(b * 1000);
   const hMm = formatMm(h * 1000);
+  const faMm = formatMm(fa * 1000);
+  const fbMm = formatMm(fb * 1000);
   const diagMm = formatMm(Math.hypot(a, b) * 1000);
 
   // Side a along X (between adjacent supports)
@@ -69,6 +81,32 @@ export function addDimensions(root, { a, b = a, h }) {
   );
   addGuide(group, new THREE.Vector3(halfA, 0, 0), new THREE.Vector3(hx, 0, 0), green);
   addGuide(group, new THREE.Vector3(0, 0, h), new THREE.Vector3(hx, 0, h), green);
+
+  // Mid-node height on side a (arch at y=−b/2)
+  const fay = -halfB - offset * 1.7;
+  addDimLine(
+    group,
+    new THREE.Vector3(0, fay, 0),
+    new THREE.Vector3(0, fay, fa),
+    `${faMm} mm`,
+    green,
+    span,
+  );
+  addGuide(group, new THREE.Vector3(0, -halfB, 0), new THREE.Vector3(0, fay, 0), green);
+  addGuide(group, new THREE.Vector3(0, -halfB, fa), new THREE.Vector3(0, fay, fa), green);
+
+  // Mid-node height on side b (arch at x=−a/2)
+  const fbx = -halfA - offset * 1.7;
+  addDimLine(
+    group,
+    new THREE.Vector3(fbx, 0, 0),
+    new THREE.Vector3(fbx, 0, fb),
+    `${fbMm} mm`,
+    green,
+    span,
+  );
+  addGuide(group, new THREE.Vector3(-halfA, 0, 0), new THREE.Vector3(fbx, 0, 0), green);
+  addGuide(group, new THREE.Vector3(-halfA, 0, fb), new THREE.Vector3(fbx, 0, fb), green);
 
   root.add(group);
   return group;

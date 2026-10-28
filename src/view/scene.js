@@ -33,6 +33,10 @@ export function createScene(canvas) {
   let model = null;
   let fittedOnce = false;
   let lastSpan = 0;
+  let onHubPick = null;
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+  let pointerDown = null;
 
   function resize() {
     const w = canvas.clientWidth || canvas.parentElement.clientWidth;
@@ -222,11 +226,42 @@ export function createScene(canvas) {
     requestAnimationFrame(frame);
   }
 
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    pointerDown = { x: e.clientX, y: e.clientY };
+  });
+  canvas.addEventListener('pointerup', (e) => {
+    if (e.button !== 0 || !pointerDown || !onHubPick) return;
+    const dx = e.clientX - pointerDown.x;
+    const dy = e.clientY - pointerDown.y;
+    pointerDown = null;
+    if (dx * dx + dy * dy > 25) return; // drag, not click
+    const rect = canvas.getBoundingClientRect();
+    pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(pointer, camera);
+    const hubs = root.children.find((c) => c.userData?.kind === 'hubs');
+    if (!hubs) return;
+    const hits = raycaster.intersectObject(hubs);
+    if (!hits.length) {
+      onHubPick(null);
+      return;
+    }
+    onHubPick(hits[0].instanceId);
+  });
+
   window.addEventListener('resize', resize);
   resize();
   frame();
 
-  return { setMode, renderDome, getMode: () => mode };
+  return {
+    setMode,
+    renderDome,
+    getMode: () => mode,
+    setHubPickHandler: (fn) => {
+      onHubPick = fn;
+    },
+  };
 }
 
 function addLineFrame(root, verts, edges) {
@@ -401,6 +436,7 @@ function addSolidFrame(root, verts, edges, products, sphereC) {
   const cylGeom = new THREE.CylinderGeometry(pipeR, pipeR, pipeLength, 16);
   const pipeMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
   const hubs = new THREE.InstancedMesh(cylGeom, pipeMat, verts.length);
+  hubs.userData.kind = 'hubs';
   const dummy = new THREE.Object3D();
   const yUp = new THREE.Vector3(0, 1, 0);
   const radial = new THREE.Vector3();

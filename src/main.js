@@ -2,7 +2,7 @@ import { buildQuadroGeometry, toViewerModel } from './geom/index.js';
 import { applyPipedProducts } from './geom/piped.js';
 import { computeLoads } from './geom/loads.js';
 import { createScene } from './view/scene.js';
-import { renderBudget } from './view/drawings.js';
+import { renderBudget, highlightHubCard } from './view/drawings.js';
 import { buildReport } from './report/stats.js';
 import { bindForm, readParams } from './ui/form.js';
 import { downloadOBJ, downloadModelOBJ } from './export/obj.js';
@@ -17,6 +17,21 @@ const modeList = document.getElementById('mode-list');
 const viewer = createScene(canvas);
 let currentModel = null;
 let currentGeom = null;
+/** nodeId → { index, color } for Vertices cards */
+let hubPickByNode = new Map();
+
+viewer.setHubPickHandler((nodeId) => {
+  if (nodeId == null) {
+    highlightHubCard(budgetEl, null);
+    return;
+  }
+  const hit = hubPickByNode.get(nodeId);
+  if (!hit) {
+    highlightHubCard(budgetEl, null);
+    return;
+  }
+  highlightHubCard(budgetEl, hit.index, hit.color);
+});
 
 function recalculate(params) {
   errorEl.hidden = true;
@@ -63,8 +78,12 @@ function recalculate(params) {
       for (const u of g.units) colorByFace.set(u.id, g.color);
     }
     const colorByHub = new Map();
+    hubPickByNode = new Map();
     for (const g of products.hubGroups) {
-      for (const u of g.units) colorByHub.set(u.id, g.color);
+      for (const u of g.units) {
+        colorByHub.set(u.id, g.color);
+        hubPickByNode.set(u.id, { index: g.index, color: g.color });
+      }
     }
     model.products = {
       pipeD: products.pipeD * mm,

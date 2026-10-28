@@ -69,11 +69,27 @@ export function renderBudget(container, geom, products) {
     section('Faces (panels)', products.faceGroups, drawFace, 420, 240),
   );
   container.appendChild(
-    section('Vertices (Piped hubs)', products.hubGroups, drawHub, 300, 200),
+    section('Vertices (Piped hubs)', products.hubGroups, drawHub, 300, 200, {
+      dataAttr: 'data-hub-index',
+    }),
   );
 }
 
-function section(title, groups, drawer, cw, ch) {
+/** Outline the Vertices card for hub type `index` (A, B, …); clear if null. */
+export function highlightHubCard(container, index, color) {
+  container.querySelectorAll('.product.is-hub-pick').forEach((el) => {
+    el.classList.remove('is-hub-pick');
+    el.style.removeProperty('--hub-pick-color');
+  });
+  if (index == null) return;
+  const card = container.querySelector(`.product[data-hub-index="${index}"]`);
+  if (!card) return;
+  card.classList.add('is-hub-pick');
+  if (color) card.style.setProperty('--hub-pick-color', color);
+  card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function section(title, groups, drawer, cw, ch, opts = {}) {
   const wrap = document.createElement('div');
   const h = document.createElement('h2');
   h.textContent = title;
@@ -85,6 +101,7 @@ function section(title, groups, drawer, cw, ch) {
   for (const g of groups) {
     const li = document.createElement('li');
     li.className = 'product';
+    if (opts.dataAttr) li.setAttribute(opts.dataAttr, g.index);
 
     const idx = document.createElement('i');
     idx.className = 'product-index';

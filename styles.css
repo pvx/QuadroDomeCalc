@@ -344,6 +344,15 @@ body {
   max-width: 420px;
 }
 
+.product.is-hub-pick {
+  outline: 3px solid var(--hub-pick-color, #27ae60);
+  outline-offset: 4px;
+}
+
+.product.is-hub-pick canvas {
+  border-color: var(--hub-pick-color, #27ae60);
+}
+
 .product-index {
   display: inline-block;
   min-width: 1.6em;
