@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   strutOverallLength,
   layoutPanelOnSheet,
+  hubRayAngles,
   OSB_SHEET_MM,
 } from './drawings.js';
 
@@ -63,5 +64,26 @@ describe('layoutPanelOnSheet', () => {
     const maxX = Math.max(...panel.map((p) => p.x));
     const maxY = Math.max(...panel.map((p) => p.y));
     assert.ok(maxX > sheetW || maxY > sheetH);
+  });
+});
+
+describe('hubRayAngles', () => {
+  it('spaces support gaps 37.7/322.3, not equal 180', () => {
+    const gaps = [37.7, 322.3];
+    const angs = hubRayAngles(gaps);
+    assert.equal(angs.length, 2);
+    assert.ok(Math.abs(angs[0] - -Math.PI / 2) < 1e-12);
+    let d = ((angs[1] - angs[0]) * 180) / Math.PI;
+    if (d < 0) d += 360;
+    assert.ok(Math.abs(d - 37.7) < 1e-9, `gap ${d} should be 37.7`);
+    assert.ok(Math.abs(d - 180) > 1, 'must not be equal spacing');
+  });
+
+  it('keeps equal gaps at equal spacing', () => {
+    const angs = hubRayAngles([90, 90, 90, 90]);
+    for (let i = 0; i < 4; i++) {
+      const expect = -Math.PI / 2 + (i * Math.PI) / 2;
+      assert.ok(Math.abs(angs[i] - expect) < 1e-12);
+    }
   });
 });

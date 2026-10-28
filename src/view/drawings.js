@@ -423,6 +423,21 @@ function cornerAnglesDeg(pts) {
   });
 }
 
+/**
+ * Canvas angles (rad, 0 = +x, CCW) for hub rays from azimuth gaps (deg).
+ * Ray 0 at −π/2 (up); gap[i] is the sector from ray i to ray i+1.
+ */
+export function hubRayAngles(gapDeg) {
+  const n = gapDeg.length;
+  const angs = new Array(n);
+  let a = -Math.PI / 2;
+  for (let i = 0; i < n; i++) {
+    angs[i] = a;
+    a += ((gapDeg[i] || 0) * Math.PI) / 180;
+  }
+  return angs;
+}
+
 function drawHub(canvas, group) {
   const ctx = canvas.getContext('2d');
   const s = group.sample;
@@ -439,6 +454,9 @@ function drawHub(canvas, group) {
   const rays = s.rays || [];
   const n = rays.length || s.valence || 0;
   const gaps = s.gapDeg || s.anglesDeg || [];
+  const rayAngs = hubRayAngles(
+    gaps.length === n ? gaps : Array.from({ length: n }, () => 360 / (n || 1)),
+  );
 
   ctx.beginPath();
   ctx.arc(cx, cy, pipeR, 0, Math.PI * 2);
@@ -455,9 +473,8 @@ function drawHub(canvas, group) {
   ctx.font = '9px Tahoma, sans-serif';
   ctx.fillText('gap ⊥ pipe · polar to axis', 8, 26);
 
-  // Equal visual spacing for drawing (actual gaps labeled)
   for (let i = 0; i < n; i++) {
-    const ang = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+    const ang = rayAngs[i];
     const x0 = cx + Math.cos(ang) * pipeR;
     const y0 = cy + Math.sin(ang) * pipeR;
     const x1 = cx + Math.cos(ang) * (pipeR + R);
@@ -480,7 +497,8 @@ function drawHub(canvas, group) {
     );
 
     const gap = gaps[i] ?? 0;
-    const midAng = ang + Math.PI / n;
+    const next = rayAngs[(i + 1) % n] + (i + 1 === n ? 2 * Math.PI : 0);
+    const midAng = (ang + next) / 2;
     const gx = cx + Math.cos(midAng) * (pipeR + R * 0.55);
     const gy = cy + Math.sin(midAng) * (pipeR + R * 0.55);
     ctx.fillStyle = '#c0392b';
