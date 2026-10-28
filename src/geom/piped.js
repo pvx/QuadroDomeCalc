@@ -499,7 +499,7 @@ function palette(n) {
   for (let i = 0; i < n; i++) {
     const h = (i * 47) % 360;
     // comma form: THREE.Color rejects modern "hsl(h s% l%)"
-    out.push(`hsl(${h}, 55%, 42%)`);
+    out.push(`hsl(${h}, 78%, 52%)`);
   }
   return out;
 }

@@ -112,8 +112,9 @@ function section(title, groups, drawer, cw, ch) {
 function summarize(g) {
   const s = g.sample;
   if (s.cutLength != null) {
-    const a = Math.round(s.endCutDegA ?? 0);
-    const b = Math.round(s.endCutDegB ?? 0);
+    // Label = angle from long edge to end face (90 − endCutDeg from square).
+    const a = Math.round(90 - (s.endCutDegA ?? 0));
+    const b = Math.round(90 - (s.endCutDegB ?? 0));
     const overall = Math.round(
       strutOverallLength(s.cutLength, s.width, s.endCutDegA, s.endCutDegB),
     );
@@ -121,7 +122,7 @@ function summarize(g) {
     const len =
       overall === axis
         ? `L=${axis} mm`
-        : `габ.=${overall} · ось=${axis} mm`;
+        : `len.=${overall} · axis=${axis} mm`;
     return `${len} · ${Math.round(s.width)}×${Math.round(s.thickness)} · cut ${a}°/${b}°`;
   }
   if (s.sideLengths) {
@@ -193,9 +194,9 @@ function drawStrut(canvas, group) {
     dimH(ctx, ax0, ax1, yBot + 16, `ось ${Math.round(s.cutLength)}`);
   }
 
-  // End-cut angle arcs
-  drawEndAngle(ctx, BL, TL, degA, true);
-  drawEndAngle(ctx, BR, TR, degB, false);
+  // End-cut angle arcs (from long edge)
+  drawEndAngle(ctx, TL, BL, degA, true);
+  drawEndAngle(ctx, TR, BR, degB, false);
 
   // Thickness stub (end view) on the right
   const tw = Math.max(10, Math.min(22, (s.thickness / s.width) * faceH));
@@ -221,31 +222,29 @@ function drawStrut(canvas, group) {
   );
 }
 
-function drawEndAngle(ctx, shortPt, longPt, deg, left) {
-  const label = `${Math.round(deg)}°`;
+/** Angle mark at the long tip: ref along long edge, arc to end face. Label = 90 − deg. */
+function drawEndAngle(ctx, longPt, shortPt, deg, left) {
+  const label = `${Math.round(90 - deg)}°`;
   ctx.strokeStyle = '#c0392b';
   ctx.fillStyle = '#c0392b';
   ctx.lineWidth = 1;
-  // reference square-cut (vertical) from short tip
+  // reference along long (top) edge, inward
   const refLen = 18;
-  const vx = shortPt.x;
-  const vy0 = shortPt.y;
-  const vy1 = shortPt.y - refLen;
+  const rx = left ? longPt.x + refLen : longPt.x - refLen;
   ctx.beginPath();
-  ctx.moveTo(vx, vy0);
-  ctx.lineTo(vx, vy1);
+  ctx.moveTo(longPt.x, longPt.y);
+  ctx.lineTo(rx, longPt.y);
   ctx.stroke();
-  // arc toward the cut edge
-  const cutAng = Math.atan2(longPt.y - shortPt.y, longPt.x - shortPt.x);
-  const start = -Math.PI / 2;
+  // arc from long edge toward cut face
+  const cutAng = Math.atan2(shortPt.y - longPt.y, shortPt.x - longPt.x);
+  const start = left ? 0 : Math.PI;
   const end = cutAng;
   const r = 14;
   ctx.beginPath();
-  if (left) ctx.arc(shortPt.x, shortPt.y, r, Math.min(start, end), Math.max(start, end));
-  else ctx.arc(shortPt.x, shortPt.y, r, Math.min(start, end), Math.max(start, end));
+  ctx.arc(longPt.x, longPt.y, r, Math.min(start, end), Math.max(start, end));
   ctx.stroke();
   ctx.font = '11px Tahoma, sans-serif';
-  ctx.fillText(label, shortPt.x + (left ? -36 : 8), shortPt.y - 8);
+  ctx.fillText(label, longPt.x + (left ? 8 : -36), longPt.y - 8);
 }
 
 function dimH(ctx, x0, x1, y, text) {

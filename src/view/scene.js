@@ -113,8 +113,8 @@ export function createScene(canvas) {
       }
     }
 
-    // Overall dimensions (a between supports, diagonal, height h)
-    addDimensions(root, { a: length, h: height });
+    // Overall dimensions (a×b between supports, diagonal, height h)
+    addDimensions(root, { a: length, b: width, h: height });
 
     if (mode === 'base') {
       camera.position.set(0, 0, Math.max(length, width) * 1.35);

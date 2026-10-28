@@ -1,18 +1,31 @@
 export function buildReport(geom, products, loads) {
   const { params, sphere, arches, stats, meta } = geom;
+  const b = params.b ?? params.a;
+  const archLines =
+    Math.abs((arches.rhoA ?? arches.rho) - (arches.rhoB ?? arches.rho)) > 1e-6
+      ? [
+          `Arch ρx (face x=±a/2): ${fmt(arches.rhoA ?? arches.rho)}`,
+          `Arch ρy (face y=±b/2): ${fmt(arches.rhoB ?? arches.rho)}`,
+          `Opening fx = c+ρx = ${fmt(arches.midHeightIdealA ?? arches.midHeightIdeal)}`,
+          `Opening fy = c+ρy = ${fmt(arches.midHeightIdealB ?? arches.midHeightIdeal)}`,
+        ]
+      : [
+          `Arch: ρ = ${fmt(arches.rho)}`,
+          `Opening height (ideal surface) f = c+ρ = ${fmt(arches.midHeightIdeal)}`,
+        ];
   const lines = [
     `STAGE: geometry + Piped/timber + loads (no member forces)`,
     meta.disclaimer,
     '',
-    `a (on axes): ${fmt(params.a)} ${meta.units}`,
+    `a (length on X): ${fmt(params.a)} ${meta.units}`,
+    `b (width on Y): ${fmt(b)} ${meta.units}`,
     `h (surface apex): ${fmt(params.h)} ${meta.units}`,
     `n (cells): ${params.n}`,
     '',
     `Sphere: c = ${fmt(sphere.c)}, R = ${fmt(sphere.R)}`,
-    `Graph-model limit: h ≤ a/√2 = ${fmt(sphere.hMax)}`,
+    `Graph-model limit: h ≤ hypot(a,b)/2 = ${fmt(sphere.hMax)}`,
     '',
-    `Arch: ρ = ${fmt(arches.rho)}`,
-    `Opening height (ideal surface) f = c+ρ = ${fmt(arches.midHeightIdeal)}`,
+    ...archLines,
     '',
     `Nodes: ${stats.nodeCount}`,
     `Edges: ${stats.edgeCount} (internal ${stats.internalEdges}, arch ${stats.archBoundaryEdges})`,

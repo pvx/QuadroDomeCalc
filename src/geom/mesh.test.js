@@ -157,4 +157,57 @@ describe('symmetric XY mesh', () => {
       assert.ok(hasEdge(on, nX2, nY2), 'ON adds nX–nY');
     }
   });
+
+  it('rectangle a≠b: node count, corners on z=0, support brace', () => {
+    const ar = 8000;
+    const br = 5000;
+    const hr = 2800;
+    const n = 6;
+    const g = buildQuadroGeometry({
+      a: ar,
+      b: br,
+      h: hr,
+      n,
+      units: 'mm',
+      supportBrace: true,
+    });
+    assert.equal(g.nodes.length, (n + 1) * (n + 1));
+    assert.equal(g.params.b, br);
+    assert.ok(Math.abs(g.sphere.hMax - Math.hypot(ar, br) / 2) < 1e-6);
+
+    const findXY = (x, y) => {
+      const id = g.nodes.findIndex(
+        (p) => Math.abs(p.x - x) < 1e-6 && Math.abs(p.y - y) < 1e-6,
+      );
+      assert.ok(id >= 0, `node ${x},${y}`);
+      return id;
+    };
+
+    for (const [sx, sy] of [
+      [1, 1],
+      [1, -1],
+      [-1, 1],
+      [-1, -1],
+    ]) {
+      const id = findXY((sx * ar) / 2, (sy * br) / 2);
+      assert.ok(Math.abs(g.nodes[id].z) < 1e-5, 'corner z≈0');
+    }
+
+    const stepX = ar / n;
+    const stepY = br / n;
+    const halfA = ar / 2;
+    const halfB = br / 2;
+    const hasEdge = (i, j) =>
+      g.edges.some(
+        (e) =>
+          (e.startNodeId === i && e.endNodeId === j) ||
+          (e.startNodeId === j && e.endNodeId === i),
+      );
+    const S = findXY(halfA, halfB);
+    const nX = findXY(halfA - stepX, halfB);
+    const nY = findXY(halfA, halfB - stepY);
+    const O = findXY(halfA - stepX, halfB - stepY);
+    assert.ok(!hasEdge(S, O), 'brace removes S–O');
+    assert.ok(hasEdge(nX, nY), 'brace adds nX–nY');
+  });
 });

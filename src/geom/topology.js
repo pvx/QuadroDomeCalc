@@ -30,11 +30,13 @@ function edgeKey(i, j) {
 
 /**
  * @param {{ nodes: object[], faces: number[][] }} mesh
- * @param {{ a:number, c:number }} sphere
+ * @param {{ a:number, b?:number, c:number }} sphere
  */
 export function buildTopology(mesh, sphere) {
   const { nodes, faces: rawFaces } = mesh;
   const sphereCenter = { x: 0, y: 0, z: sphere.c };
+  const a = sphere.a;
+  const b = sphere.b ?? a;
 
   const edgeMap = new Map();
   const triangles = [];
@@ -46,7 +48,7 @@ export function buildTopology(mesh, sphere) {
       const B = nodes[j];
       const length = Math.hypot(B.x - A.x, B.y - A.y, B.z - A.z);
       const onBoundary =
-        isBoundaryNode(A, sphere.a) && isBoundaryNode(B, sphere.a);
+        isBoundaryNode(A, a, b) && isBoundaryNode(B, a, b);
       edgeMap.set(k, {
         id: edgeMap.size,
         startNodeId: Math.min(i, j),

@@ -27,11 +27,23 @@ describe('sphereFromSupports', () => {
     assert.ok(Math.abs(surfaceZ(0, 0, s) - h) < 1e-6);
   });
 
-  it('rejects h > a/√2 with clear error', () => {
+  it('rejects h > hypot(a,b)/2 with clear error', () => {
     assert.throws(
       () => sphereFromSupports(1000, 1000 / Math.SQRT2 + 1),
       /does not support/,
     );
+  });
+
+  it('rectangle: corners at z=0 and hMax = hypot(a,b)/2', () => {
+    const ar = 8000;
+    const br = 5000;
+    const hr = Math.min(3000, Math.hypot(ar, br) / 2 * 0.9);
+    const s = sphereFromSupports(ar, hr, br);
+    assert.ok(Math.abs(s.hMax - Math.hypot(ar, br) / 2) < 1e-9);
+    assert.equal(s.b, br);
+    assert.ok(Math.abs(surfaceZ(ar / 2, br / 2, s)) < 1e-6);
+    assert.ok(Math.abs(surfaceZ(-ar / 2, -br / 2, s)) < 1e-6);
+    assert.ok(Math.abs(surfaceZ(0, 0, s) - hr) < 1e-6);
   });
 
   it('rejects point far outside disc', () => {

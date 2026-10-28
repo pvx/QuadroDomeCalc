@@ -14,23 +14,35 @@ export function readParams(form) {
   const diagonalOnAxes = num(el(form, 'diagonalOnAxes').value, 9553.52);
   const fromDiag = el(form, 'aFromDiag').checked;
   let a = num(el(form, 'a').value, aFromDiagonalOnAxes(diagonalOnAxes));
+  let b = num(el(form, 'b').value, a);
   if (fromDiag) {
-    a = aFromDiagonalOnAxes(diagonalOnAxes);
+    // scale a and b so hypot(a,b) = diagonal (keeps aspect ratio)
+    const cur = Math.hypot(a, b);
+    if (cur > 0) {
+      const s = diagonalOnAxes / cur;
+      a *= s;
+      b *= s;
+    } else {
+      a = aFromDiagonalOnAxes(diagonalOnAxes);
+      b = a;
+    }
     el(form, 'a').value = round1(a);
+    el(form, 'b').value = round1(b);
   } else {
-    el(form, 'diagonalOnAxes').value = round2(a * Math.SQRT2);
+    el(form, 'diagonalOnAxes').value = round2(Math.hypot(a, b));
   }
 
   const autoH = el(form, 'autoH').checked;
   let h = num(el(form, 'h').value, 4183);
   if (autoH) {
-    h = hFromA(a);
+    h = hFromA(a, b);
     el(form, 'h').value = round1(h);
   }
 
   return {
-    diagonalOnAxes: fromDiag ? diagonalOnAxes : a * Math.SQRT2,
+    diagonalOnAxes: fromDiag ? diagonalOnAxes : Math.hypot(a, b),
     a,
+    b,
     h,
     n: Math.max(2, Math.floor(num(el(form, 'n').value, 8))),
     outer: num(el(form, 'outer').value, 7010),
@@ -63,8 +75,9 @@ export function readParams(form) {
 export function bindForm(form, onChange) {
   const defaults = defaultAssumptionsMm();
   el(form, 'a').value = round1(defaults.a);
+  el(form, 'b').value = round1(defaults.b ?? defaults.a);
   el(form, 'h').value = round1(defaults.h);
-  el(form, 'diagonalOnAxes').value = round2(defaults.a * Math.SQRT2);
+  el(form, 'diagonalOnAxes').value = round2(Math.hypot(defaults.a, defaults.b ?? defaults.a));
   el(form, 'aFromDiag').checked = false;
   el(form, 'autoH').checked = true;
 
@@ -73,13 +86,26 @@ export function bindForm(form, onChange) {
   const syncFromDiag = () => {
     if (!el(form, 'aFromDiag').checked) return;
     const diag = num(el(form, 'diagonalOnAxes').value, 9553.52);
-    el(form, 'a').value = round1(aFromDiagonalOnAxes(diag));
+    let a = num(el(form, 'a').value, defaults.a);
+    let b = num(el(form, 'b').value, a);
+    const cur = Math.hypot(a, b);
+    if (cur > 0) {
+      const s = diag / cur;
+      a *= s;
+      b *= s;
+    } else {
+      a = aFromDiagonalOnAxes(diag);
+      b = a;
+    }
+    el(form, 'a').value = round1(a);
+    el(form, 'b').value = round1(b);
   };
 
   const syncH = () => {
     if (!el(form, 'autoH').checked) return;
     const a = num(el(form, 'a').value, defaults.a);
-    el(form, 'h').value = round1(hFromA(a));
+    const b = num(el(form, 'b').value, a);
+    el(form, 'h').value = round1(hFromA(a, b));
   };
 
   const emit = () => {
@@ -91,6 +117,7 @@ export function bindForm(form, onChange) {
   const names = [
     'diagonalOnAxes',
     'a',
+    'b',
     'aFromDiag',
     'outer',
     'inner',
@@ -121,10 +148,16 @@ export function bindForm(form, onChange) {
   for (const name of names) {
     const node = el(form, name);
     const onEdit = () => {
-      if (name === 'a') el(form, 'aFromDiag').checked = false;
+      if (name === 'a' || name === 'b') el(form, 'aFromDiag').checked = false;
       if (name === 'h') el(form, 'autoH').checked = false;
       if (name === 'aFromDiag' || name === 'diagonalOnAxes') syncFromDiag();
-      if (name === 'a' || name === 'aFromDiag' || name === 'diagonalOnAxes' || name === 'autoH') {
+      if (
+        name === 'a' ||
+        name === 'b' ||
+        name === 'aFromDiag' ||
+        name === 'diagonalOnAxes' ||
+        name === 'autoH'
+      ) {
         syncH();
       }
       emit();

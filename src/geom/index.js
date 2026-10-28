@@ -2,7 +2,13 @@
  * Quadro dome geometry API (stage 1: geometry only).
  * Not a strength check. Not an exact reverse-engineering of a photo.
  */
-import { sphereFromSupports, archMidHeight, archRho } from './sphere.js';
+import {
+  sphereFromSupports,
+  archMidHeight,
+  archMidHeightY,
+  archRho,
+  archRhoY,
+} from './sphere.js';
 import { buildSymmetricXYMesh, flipSupportCornerDiagonals } from './mesh.js';
 import { sampleAllArches } from './arches.js';
 import { buildTopology } from './topology.js';
@@ -17,7 +23,7 @@ export const REFERENCE_MM = {
 
 /**
  * Working hypothesis: 9553.52 mm is the diagonal between opposite support axes.
- * a = diagonal / √2.
+ * a = diagonal / √2 (square).
  */
 export function aFromDiagonalOnAxes(diagonal) {
   if (!(diagonal > 0)) throw new Error('Axis diagonal must be > 0.');
@@ -25,18 +31,20 @@ export function aFromDiagonalOnAxes(diagonal) {
 }
 
 /**
- * Auto height from reference CAD proportion: h/a = 4183 / a_ref.
- * Clamped to model limit h ≤ a/√2 (upper-branch sphere graph).
+ * Auto height from reference CAD proportion of hMax.
+ * When b=a, equals previous h = a · (4183/a_ref), clamped to h ≤ hypot(a,b)/2.
  */
-export function hFromA(a) {
+export function hFromA(a, b = a) {
   const aRef = aFromDiagonalOnAxes(REFERENCE_MM.diagonalOnAxes);
   const ratio = REFERENCE_MM.heightSurface / aRef;
-  const hMax = a / Math.SQRT2;
+  const hMax = Math.hypot(a, b) / 2;
+  // same fraction of hMax as square: (a·ratio)/(a/√2) = ratio·√2
+  const h = (ratio * Math.SQRT2) * hMax;
   // stay slightly under hMax so c ≤ 0 holds numerically
-  return Math.min(a * ratio, hMax * 0.999);
+  return Math.min(h, hMax * 0.999);
 }
 
-/** Reference ratio h/a (documented assumption). */
+/** Reference ratio h/a (documented assumption, square). */
 export function referenceHeightRatio() {
   const aRef = aFromDiagonalOnAxes(REFERENCE_MM.diagonalOnAxes);
   return REFERENCE_MM.heightSurface / aRef;
@@ -49,6 +57,7 @@ export function defaultAssumptionsMm() {
   return {
     units: 'mm',
     a,
+    b: a,
     h: REFERENCE_MM.heightSurface,
     n: 8,
     diagonalOnAxes,
@@ -57,37 +66,40 @@ export function defaultAssumptionsMm() {
     heightRatio: ratio,
     assumptions: [
       '9553.52 mm is a hypothesis: the square diagonal between opposite support axes → a = 9553.52/√2.',
-      'Outer size 7010, inner size 6500, and axis size a are different quantities and are not substituted for each other.',
-      `Auto-h: when a changes, height is recomputed as h = a · ${ratio.toFixed(4)} (drawing proportion 4183/a), clamped to h ≤ a/√2.`,
+      'Outer size 7010, inner size 6500, and axis sizes a×b are different quantities and are not substituted for each other.',
+      `Auto-h: height keeps the reference fraction of hMax = hypot(a,b)/2 (square: h = a · ${ratio.toFixed(4)}).`,
       'Reference height 4183 mm is the design surface height (possibly the outer cladding surface, not the frame nodes).',
-      'The mesh is a parametric XY approximation with D4 symmetry, not an exact copy of the drawing and not a classic geodesic dome.',
+      'The mesh is a parametric XY approximation (D4 when a=b, mirror when a≠b), not an exact copy of the drawing and not a classic geodesic dome.',
       'Piped: edge shortening ≈ pipeD/2 at the hub; bevels from timber W×T and adjacent normals are an approximation, not a machine cut angle and not a strength check.',
     ],
   };
 }
 
 /**
- * @param {{ a:number, h:number, n:number, units?:string, includeAnalyticalArches?:boolean, supportBrace?:boolean }} params
+ * @param {{ a:number, b?:number, h:number, n:number, units?:string, includeAnalyticalArches?:boolean, supportBrace?:boolean }} params
  */
 export function buildQuadroGeometry(params) {
   const a = params.a;
+  const b = params.b ?? a;
   const h = params.h;
   const n = params.n;
   const units = params.units || 'mm';
   const supportBrace = params.supportBrace !== false;
 
-  const sphere = sphereFromSupports(a, h);
+  const sphere = sphereFromSupports(a, h, b);
   const mesh = buildSymmetricXYMesh(sphere, n);
-  if (supportBrace) flipSupportCornerDiagonals(mesh, a);
+  if (supportBrace) flipSupportCornerDiagonals(mesh, a, b);
   const topology = buildTopology(mesh, sphere);
 
   const supports = [
-    { id: 'S0', x: -a / 2, y: -a / 2, z: 0 },
-    { id: 'S1', x: +a / 2, y: -a / 2, z: 0 },
-    { id: 'S2', x: +a / 2, y: +a / 2, z: 0 },
-    { id: 'S3', x: -a / 2, y: +a / 2, z: 0 },
+    { id: 'S0', x: -a / 2, y: -b / 2, z: 0 },
+    { id: 'S1', x: +a / 2, y: -b / 2, z: 0 },
+    { id: 'S2', x: +a / 2, y: +b / 2, z: 0 },
+    { id: 'S3', x: -a / 2, y: +b / 2, z: 0 },
   ];
 
+  const rhoA = archRho(sphere);
+  const rhoB = archRhoY(sphere);
   const result = {
     meta: {
       stage: 'geometry-only',
@@ -98,7 +110,7 @@ export function buildQuadroGeometry(params) {
       disclaimer:
         'The model does not confirm that the structure is safe to build.',
     },
-    params: { a, h, n, supportBrace },
+    params: { a, b, h, n, supportBrace },
     sphere: {
       c: sphere.c,
       R: sphere.R,
@@ -108,8 +120,12 @@ export function buildQuadroGeometry(params) {
     },
     supports,
     arches: {
-      rho: archRho(sphere),
+      rho: rhoA,
+      rhoA,
+      rhoB,
       midHeightIdeal: archMidHeight(sphere),
+      midHeightIdealA: archMidHeight(sphere),
+      midHeightIdealB: archMidHeightY(sphere),
       note:
         'Opening height f = c+ρ is on the ideal smooth surface. ' +
         'Clear opening after section and cladding is not computed at this stage.',
@@ -159,10 +175,11 @@ export function toViewerModel(geom) {
     typeId: e.typeId,
   }));
   const a = geom.params.a * scale;
+  const b = (geom.params.b ?? geom.params.a) * scale;
   const h = geom.params.h * scale;
   return {
     length: a,
-    width: a,
+    width: b,
     height: h,
     wallHeight: 0,
     frequency: geom.params.n,

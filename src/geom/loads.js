@@ -109,6 +109,7 @@ export function computeLoads(geom, products, opts = {}) {
   const verticalKN = deadKN + snowKN;
   const share = verticalKN / 4;
   // Wind couple about Y through origin: leeward (+x) +M/(2a), windward (−x) −M/(2a)
+  // lever arm uses a (X span between supports)
   const couple = a > 0 ? windMomentKNm / (2 * (a * 1e-3)) : 0;
 
   const supports = geom.supports.map((s) => {

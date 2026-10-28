@@ -1,6 +1,6 @@
 /**
- * Parametric XY grid triangulation with D4 symmetry (not a classic geodesic).
- * Build one quadrant, rotate ×4, merge axis nodes.
+ * Parametric XY grid triangulation.
+ * Square (a=b): D4 via 90° rotation. Rectangle: mirror four quadrants.
  */
 import { surfaceZ, GEOM_EPS } from './sphere.js';
 
@@ -14,23 +14,26 @@ export function buildSymmetricXYMesh(sphere, n) {
     throw new Error(`n must be an even integer ≥ 2 (got ${n}).`);
   }
 
-  const { a } = sphere;
+  const a = sphere.a;
+  const b = sphere.b ?? a;
   const half = N / 2;
   const halfA = a / 2;
+  const halfB = b / 2;
+  const square = Math.abs(a - b) <= GEOM_EPS;
 
-  // Quadrant nodes: i=0..half, j=0..half → x,y in [0, a/2]
+  // Quadrant nodes: i=0..half, j=0..half → x,y in [0, a/2]×[0, b/2]
   const qIndex = (i, j) => i * (half + 1) + j;
   const qNodes = [];
   for (let i = 0; i <= half; i++) {
     for (let j = 0; j <= half; j++) {
       const x = (i / half) * halfA;
-      const y = (j / half) * halfA;
+      const y = (j / half) * halfB;
       qNodes.push({ x, y, z: surfaceZ(x, y, sphere), qi: i, qj: j });
     }
   }
 
   // Quadrant faces: cells i=0..half-1, j=0..half-1
-  // Alternating diagonal inside quadrant (local); D4 comes from rotation.
+  // Alternating diagonal inside quadrant (local); D4 comes from rotation when square.
   const qFaces = [];
   for (let i = 0; i < half; i++) {
     for (let j = 0; j < half; j++) {
@@ -48,7 +51,7 @@ export function buildSymmetricXYMesh(sphere, n) {
     }
   }
 
-  // Rotate quadrant k=0..3 and merge nodes by rounded key
+  // Rotate / mirror quadrant and merge nodes by rounded key
   const keyOf = (p) =>
     `${Math.round(p.x / GEOM_EPS)},${Math.round(p.y / GEOM_EPS)},${Math.round(p.z / GEOM_EPS)}`;
 
@@ -77,23 +80,46 @@ export function buildSymmetricXYMesh(sphere, n) {
     return { x, y, z };
   }
 
-  // Sign patterns for four quadrants via rotation of +/+ quadrant
+  // Sign patterns for four quadrants: (++), (-+), (--), (+-)
+  const mirrors = [
+    [1, 1],
+    [-1, 1],
+    [-1, -1],
+    [1, -1],
+  ];
+
   const faces = [];
-  for (let k = 0; k < 4; k++) {
-    const mapLocal = qNodes.map((p) => addNode(rot90(p, k)));
-    for (const f of qFaces) {
-      const ids = f.map((li) => mapLocal[li]);
-      // Keep winding; rotation preserves orientation in XY with z up
-      faces.push(ids);
+  if (square) {
+    for (let k = 0; k < 4; k++) {
+      const mapLocal = qNodes.map((p) => addNode(rot90(p, k)));
+      for (const f of qFaces) {
+        faces.push(f.map((li) => mapLocal[li]));
+      }
+    }
+  } else {
+    for (let q = 0; q < 4; q++) {
+      const [sx, sy] = mirrors[q];
+      const mapLocal = qNodes.map((p) =>
+        addNode({ x: sx * p.x, y: sy * p.y, z: p.z }),
+      );
+      // Odd mirrors reverse winding so normals stay outward.
+      const flip = sx * sy < 0;
+      for (const f of qFaces) {
+        const ids = f.map((li) => mapLocal[li]);
+        faces.push(flip ? [ids[0], ids[2], ids[1]] : ids);
+      }
     }
   }
 
   return {
-    generator: 'symmetric-xy-grid',
-    note:
-      'Parametric engineering approximation (uniform XY grid + D4). ' +
-      'Not an exact copy of the drawing mesh and not a classic geodesic mesh. ' +
-      'Edge lengths can be uneven.',
+    generator: square ? 'symmetric-xy-grid' : 'mirror-xy-grid',
+    note: square
+      ? 'Parametric engineering approximation (uniform XY grid + D4). ' +
+        'Not an exact copy of the drawing mesh and not a classic geodesic mesh. ' +
+        'Edge lengths can be uneven.'
+      : 'Parametric engineering approximation (uniform XY grid + mirrors for a≠b). ' +
+        'Not an exact copy of the drawing mesh and not a classic geodesic mesh. ' +
+        'Edge lengths can be uneven.',
     n: N,
     nodes,
     faces,
@@ -101,13 +127,14 @@ export function buildSymmetricXYMesh(sphere, n) {
 }
 
 /**
- * Classify boundary: node on support square |x|=a/2 or |y|=a/2 (within tol).
+ * Classify boundary: node on support rectangle |x|=a/2 or |y|=b/2 (within tol).
  */
-export function isBoundaryNode(node, a, tol = 1e-8) {
-  const half = a / 2;
+export function isBoundaryNode(node, a, b = a, tol = 1e-8) {
+  const halfA = a / 2;
+  const halfB = b / 2;
   return (
-    Math.abs(Math.abs(node.x) - half) <= tol ||
-    Math.abs(Math.abs(node.y) - half) <= tol
+    Math.abs(Math.abs(node.x) - halfA) <= tol ||
+    Math.abs(Math.abs(node.y) - halfB) <= tol
   );
 }
 
@@ -123,10 +150,12 @@ function findNodeXY(nodes, x, y, tol = GEOM_EPS * 10) {
  * At each support corner: remove diagonal S–O (support → inner cell corner),
  * add brace nX–nY between the two arch neighbors. Mutates mesh.faces.
  */
-export function flipSupportCornerDiagonals(mesh, a) {
+export function flipSupportCornerDiagonals(mesh, a, b = a) {
   const { nodes, faces, n } = mesh;
   const halfA = a / 2;
-  const step = a / n;
+  const halfB = b / 2;
+  const stepX = a / n;
+  const stepY = b / n;
   const signs = [
     [1, 1],
     [1, -1],
@@ -135,10 +164,10 @@ export function flipSupportCornerDiagonals(mesh, a) {
   ];
 
   for (const [sx, sy] of signs) {
-    const S = findNodeXY(nodes, sx * halfA, sy * halfA);
-    const nX = findNodeXY(nodes, sx * (halfA - step), sy * halfA);
-    const nY = findNodeXY(nodes, sx * halfA, sy * (halfA - step));
-    const O = findNodeXY(nodes, sx * (halfA - step), sy * (halfA - step));
+    const S = findNodeXY(nodes, sx * halfA, sy * halfB);
+    const nX = findNodeXY(nodes, sx * (halfA - stepX), sy * halfB);
+    const nY = findNodeXY(nodes, sx * halfA, sy * (halfB - stepY));
+    const O = findNodeXY(nodes, sx * (halfA - stepX), sy * (halfB - stepY));
     if (S < 0 || nX < 0 || nY < 0 || O < 0) {
       throw new Error('Support-corner nodes for the brace were not found.');
     }

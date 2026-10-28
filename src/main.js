@@ -24,6 +24,7 @@ function recalculate(params) {
   try {
     const geom = buildQuadroGeometry({
       a: params.a,
+      b: params.b,
       h: params.h,
       n: params.n,
       units: 'mm',
@@ -121,7 +122,7 @@ document.getElementById('btn-obj').addEventListener('click', () => {
   if (!currentModel || !currentGeom) return;
   downloadOBJ(
     currentModel,
-    `quadro-a${Math.round(currentGeom.params.a)}-n${currentGeom.params.n}.obj`,
+    `quadro-a${Math.round(currentGeom.params.a)}-b${Math.round(currentGeom.params.b ?? currentGeom.params.a)}-n${currentGeom.params.n}.obj`,
   );
 });
 
@@ -129,7 +130,7 @@ document.getElementById('btn-model-obj').addEventListener('click', () => {
   if (!currentModel?.products?.edgeCuts?.length || !currentGeom) return;
   downloadModelOBJ(
     currentModel,
-    `quadro-a${Math.round(currentGeom.params.a)}-n${currentGeom.params.n}-model.obj`,
+    `quadro-a${Math.round(currentGeom.params.a)}-b${Math.round(currentGeom.params.b ?? currentGeom.params.a)}-n${currentGeom.params.n}-model.obj`,
   );
 });
 

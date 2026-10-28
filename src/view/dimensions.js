@@ -2,68 +2,72 @@ import * as THREE from 'three';
 
 /**
  * Overall dimensions (scene units = meters; labels in mm).
- * a — distance between adjacent supports on axes; h — apex height.
+ * a — length between supports on X; b — width on Y; h — apex height.
  */
-export function addDimensions(root, { a, h }) {
+export function addDimensions(root, { a, b = a, h }) {
   const group = new THREE.Group();
   group.name = 'dimensions';
 
-  const half = a / 2;
-  const offset = Math.max(a * 0.08, 0.25);
+  const halfA = a / 2;
+  const halfB = b / 2;
+  const span = Math.max(a, b);
+  const offset = Math.max(span * 0.08, 0.25);
   const blue = 0x1a73e8;
   const orange = 0xe67e22;
   const green = 0x27ae60;
 
   const aMm = formatMm(a * 1000);
+  const bMm = formatMm(b * 1000);
   const hMm = formatMm(h * 1000);
-  const diagMm = formatMm(a * Math.SQRT2 * 1000);
+  const diagMm = formatMm(Math.hypot(a, b) * 1000);
 
-  // Side a (between adjacent supports)
-  const yOff = -half - offset;
+  // Side a along X (between adjacent supports)
+  const yOff = -halfB - offset;
   addDimLine(
     group,
-    new THREE.Vector3(-half, yOff, 0),
-    new THREE.Vector3(half, yOff, 0),
+    new THREE.Vector3(-halfA, yOff, 0),
+    new THREE.Vector3(halfA, yOff, 0),
     `${aMm} mm`,
     blue,
-    a,
+    span,
   );
-  addGuide(group, new THREE.Vector3(-half, -half, 0), new THREE.Vector3(-half, yOff, 0), blue);
-  addGuide(group, new THREE.Vector3(half, -half, 0), new THREE.Vector3(half, yOff, 0), blue);
+  addGuide(group, new THREE.Vector3(-halfA, -halfB, 0), new THREE.Vector3(-halfA, yOff, 0), blue);
+  addGuide(group, new THREE.Vector3(halfA, -halfB, 0), new THREE.Vector3(halfA, yOff, 0), blue);
 
-  const xOff = half + offset;
+  // Side b along Y
+  const xOff = halfA + offset;
   addDimLine(
     group,
-    new THREE.Vector3(xOff, -half, 0),
-    new THREE.Vector3(xOff, half, 0),
-    `${aMm} mm`,
+    new THREE.Vector3(xOff, -halfB, 0),
+    new THREE.Vector3(xOff, halfB, 0),
+    `${bMm} mm`,
     blue,
-    a,
+    span,
   );
-  addGuide(group, new THREE.Vector3(half, -half, 0), new THREE.Vector3(xOff, -half, 0), blue);
-  addGuide(group, new THREE.Vector3(half, half, 0), new THREE.Vector3(xOff, half, 0), blue);
+  addGuide(group, new THREE.Vector3(halfA, -halfB, 0), new THREE.Vector3(xOff, -halfB, 0), blue);
+  addGuide(group, new THREE.Vector3(halfA, halfB, 0), new THREE.Vector3(xOff, halfB, 0), blue);
 
   // Diagonal between opposite supports
   addDimLine(
     group,
-    new THREE.Vector3(-half, -half, 0.01),
-    new THREE.Vector3(half, half, 0.01),
+    new THREE.Vector3(-halfA, -halfB, 0.01),
+    new THREE.Vector3(halfA, halfB, 0.01),
     `${diagMm} mm`,
     orange,
-    a,
+    span,
   );
 
   // Height h
-  const hx = half + offset * 1.7;
+  const hx = halfA + offset * 1.7;
   addDimLine(
     group,
     new THREE.Vector3(hx, 0, 0),
     new THREE.Vector3(hx, 0, h),
     `${hMm} mm`,
     green,
-    a,
+    span,
   );
-  addGuide(group, new THREE.Vector3(half, 0, 0), new THREE.Vector3(hx, 0, 0), green);
+  addGuide(group, new THREE.Vector3(halfA, 0, 0), new THREE.Vector3(hx, 0, 0), green);
   addGuide(group, new THREE.Vector3(0, 0, h), new THREE.Vector3(hx, 0, h), green);
 
   root.add(group);
