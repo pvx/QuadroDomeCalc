@@ -61,7 +61,7 @@ function barUsedMm(bar) {
 
 /**
  * Try placing `piece` at the end of `bar`. Returns placement or null.
- * Same open angle required; next piece is preferably flipped 180°.
+ * Same open angle → nest + one kerf (prefer 180° flip). Different angle → kerf only.
  */
 function tryPlace(bar, piece, kerfMm, stockMm) {
   if (piece.overallMm > stockMm + 1e-9) return null;
@@ -70,22 +70,24 @@ function tryPlace(bar, piece, kerfMm, stockMm) {
   }
   const last = bar.pieces[bar.pieces.length - 1];
   const open = rightCut(last, last.flipped);
+  const lastEnd = last.startMm + last.overallMm;
   const opts = [];
   for (const flipped of [false, true]) {
-    if (!anglesMatch(leftCut(piece, flipped), open)) continue;
-    const nest = nestOverlapMm(piece.widthMm, open);
-    const startMm = last.startMm + last.overallMm - nest + kerfMm;
+    const match = anglesMatch(leftCut(piece, flipped), open);
+    const nest = match ? nestOverlapMm(piece.widthMm, open) : 0;
+    const startMm = lastEnd - nest + kerfMm;
     const usedMm = startMm + piece.overallMm;
     if (usedMm <= stockMm + 1e-6) {
-      opts.push({ flipped, startMm, usedMm, nest });
+      opts.push({ flipped, startMm, usedMm, nest, match });
     }
   }
   if (!opts.length) return null;
+  // Prefer nesting (smaller used), then 180° alternation.
   opts.sort((a, b) => {
+    if (Math.abs(a.usedMm - b.usedMm) > 1e-6) return a.usedMm - b.usedMm;
     const altA = a.flipped === !last.flipped ? 0 : 1;
     const altB = b.flipped === !last.flipped ? 0 : 1;
-    if (altA !== altB) return altA - altB;
-    return a.usedMm - b.usedMm;
+    return altA - altB;
   });
   return opts[0];
 }
@@ -177,7 +179,8 @@ function emptyBars(bars, stockMm, kerfMm) {
 
 /**
  * Pack edge pieces onto stock bars.
- * Same cut angle + 180° flip → one kerf and nested tips; minimize bar count.
+ * Same cut angle + 180° flip → nest + one kerf; different angles still share a bar
+ * (kerf only). Primary goal: minimize bar count, then leftover.
  *
  * @param {object[]} pieces { overallMm, widthMm, cutA, cutB, color?, index?, ... }
  * @returns {{ bars: object[], oversized: object[], barCount: number }}

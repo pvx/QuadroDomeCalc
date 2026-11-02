@@ -114,11 +114,30 @@ describe('packStockBars', () => {
     assert.ok(bars[0].usedMm < naive - 1, `used ${bars[0].usedMm} should nest below ${naive}`);
   });
 
-  it('does not join 80°/80° with 70°/70° on one cut', () => {
+  it('joins 80°/80° with 70°/70° on one bar without nesting', () => {
     const a = piece(1000, 80, 80, 150);
     const b = piece(1000, 70, 70, 150);
-    const { barCount } = packStockBars([a, b], 6000, 3);
-    assert.equal(barCount, 2);
+    const { bars, barCount } = packStockBars([a, b], 6000, 3);
+    assert.equal(barCount, 1);
+    assert.equal(bars[0].pieces.length, 2);
+    assert.equal(bars[0].pieces[1].nestMm, 0);
+    assert.ok(Math.abs(bars[0].usedMm - (1000 + 3 + 1000)) < 1e-6);
+  });
+
+  it('packs 1781×2 @75° plus 2081 @72° onto one 6000 bar', () => {
+    const pieces = [
+      piece(1781, 75, 75, 150, { index: 'A' }),
+      piece(1781, 75, 75, 150, { index: 'A' }),
+      piece(2081, 72, 72, 150, { index: 'B' }),
+    ];
+    const { bars, barCount } = packStockBars(pieces, 6000, 3);
+    assert.equal(barCount, 1);
+    assert.equal(bars[0].pieces.length, 3);
+    const naiveNoNest = 1781 + 3 + 1781 + 3 + 2081;
+    assert.ok(
+      bars[0].usedMm < naiveNoNest - 1,
+      `used ${bars[0].usedMm} should nest the 75° pair below ${naiveNoNest}`,
+    );
   });
 
   it('combines 70 + 30 with shared 80° into two bars instead of three', () => {
