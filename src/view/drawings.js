@@ -3,6 +3,17 @@
 /** Standard OSB sheet, mm (long × short). */
 export const OSB_SHEET_MM = { long: 2500, short: 1250 };
 
+/** Default timber stock length for Edges packing (mm). */
+export const DEFAULT_STOCK_MM = 6000;
+/** Default saw kerf between pieces on one stock bar (mm). */
+export const DEFAULT_KERF_MM = 3;
+
+/** Survive Recalculate rebuild of the budget DOM. */
+let stockLengthMm = DEFAULT_STOCK_MM;
+let sawKerfMm = DEFAULT_KERF_MM;
+/** Active budget tab id: edges | stock | faces | vertices */
+let activeBudgetTab = 'edges';
+
 /**
  * Axis cut length → overall envelope along the board (mm).
  * End face tilted by α,β from square across the width face.
@@ -13,6 +24,220 @@ export function strutOverallLength(cutLength, width, degA, degB) {
     cutLength +
     (width / 2) * (Math.tan(rad(degA)) + Math.tan(rad(degB)))
   );
+}
+
+/** Label cut angle (from long edge) → bevel from square (deg). */
+function bevelFromLabel(cutLabel) {
+  return Math.max(0, 90 - (cutLabel ?? 90));
+}
+
+/**
+ * Nesting overlap along the stock when two matching bevels meet (mm).
+ * One shared kerf; tips nest by width·tan(bevel).
+ */
+export function nestOverlapMm(widthMm, cutLabelDeg) {
+  const bevel = bevelFromLabel(cutLabelDeg);
+  if (!(bevel > 0) || !(widthMm > 0)) return 0;
+  return widthMm * Math.tan((bevel * Math.PI) / 180);
+}
+
+function anglesMatch(a, b) {
+  return Math.round(a) === Math.round(b);
+}
+
+function leftCut(piece, flipped) {
+  return flipped ? piece.cutB : piece.cutA;
+}
+
+function rightCut(piece, flipped) {
+  return flipped ? piece.cutA : piece.cutB;
+}
+
+function barUsedMm(bar) {
+  if (!bar.pieces.length) return 0;
+  const last = bar.pieces[bar.pieces.length - 1];
+  return last.startMm + last.overallMm;
+}
+
+/**
+ * Try placing `piece` at the end of `bar`. Returns placement or null.
+ * Same open angle required; next piece is preferably flipped 180°.
+ */
+function tryPlace(bar, piece, kerfMm, stockMm) {
+  if (piece.overallMm > stockMm + 1e-9) return null;
+  if (!bar.pieces.length) {
+    return { flipped: false, startMm: 0, usedMm: piece.overallMm, nest: 0 };
+  }
+  const last = bar.pieces[bar.pieces.length - 1];
+  const open = rightCut(last, last.flipped);
+  const opts = [];
+  for (const flipped of [false, true]) {
+    if (!anglesMatch(leftCut(piece, flipped), open)) continue;
+    const nest = nestOverlapMm(piece.widthMm, open);
+    const startMm = last.startMm + last.overallMm - nest + kerfMm;
+    const usedMm = startMm + piece.overallMm;
+    if (usedMm <= stockMm + 1e-6) {
+      opts.push({ flipped, startMm, usedMm, nest });
+    }
+  }
+  if (!opts.length) return null;
+  opts.sort((a, b) => {
+    const altA = a.flipped === !last.flipped ? 0 : 1;
+    const altB = b.flipped === !last.flipped ? 0 : 1;
+    if (altA !== altB) return altA - altB;
+    return a.usedMm - b.usedMm;
+  });
+  return opts[0];
+}
+
+function appendPiece(bar, piece, place) {
+  bar.pieces.push({
+    ...piece,
+    overallMm: piece.overallMm,
+    flipped: place.flipped,
+    startMm: place.startMm,
+    nestMm: place.nest ?? 0,
+  });
+}
+
+function sharesAngle(bar, piece) {
+  for (const pl of bar.pieces) {
+    if (
+      anglesMatch(pl.cutA, piece.cutA) ||
+      anglesMatch(pl.cutA, piece.cutB) ||
+      anglesMatch(pl.cutB, piece.cutA) ||
+      anglesMatch(pl.cutB, piece.cutB)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function stripPlacement(p) {
+  return {
+    overallMm: p.overallMm,
+    axisMm: p.axisMm,
+    widthMm: p.widthMm,
+    cutA: p.cutA,
+    cutB: p.cutB,
+    color: p.color,
+    index: p.index,
+    edgeId: p.edgeId,
+  };
+}
+
+/** Move pieces off emptiest bars when that removes a bar. */
+function emptyBars(bars, stockMm, kerfMm) {
+  let list = bars.map((b) => ({
+    pieces: b.pieces.map((p) => ({ ...p })),
+  }));
+  let progress = true;
+  while (progress && list.length > 1) {
+    progress = false;
+    list.sort((a, b) => stockMm - barUsedMm(a) - (stockMm - barUsedMm(b)));
+    for (let di = 0; di < list.length; di++) {
+      const donor = list[di];
+      const trial = list
+        .filter((_, i) => i !== di)
+        .map((b) => ({ pieces: b.pieces.map((p) => ({ ...p })) }));
+      let ok = true;
+      for (const placed of donor.pieces) {
+        const raw = stripPlacement(placed);
+        let best = null;
+        for (let bi = 0; bi < trial.length; bi++) {
+          const place = tryPlace(trial[bi], raw, kerfMm, stockMm);
+          if (!place) continue;
+          const leftover = stockMm - place.usedMm;
+          if (
+            !best ||
+            leftover < best.leftover - 1e-6 ||
+            (Math.abs(leftover - best.leftover) < 1e-6 &&
+              sharesAngle(trial[bi], raw) &&
+              !best.hasSame)
+          ) {
+            best = { bi, place, leftover, hasSame: sharesAngle(trial[bi], raw) };
+          }
+        }
+        if (!best) {
+          ok = false;
+          break;
+        }
+        appendPiece(trial[best.bi], raw, best.place);
+      }
+      if (ok) {
+        list = trial;
+        progress = true;
+        break;
+      }
+    }
+  }
+  return list;
+}
+
+/**
+ * Pack edge pieces onto stock bars.
+ * Same cut angle + 180° flip → one kerf and nested tips; minimize bar count.
+ *
+ * @param {object[]} pieces { overallMm, widthMm, cutA, cutB, color?, index?, ... }
+ * @returns {{ bars: object[], oversized: object[], barCount: number }}
+ */
+export function packStockBars(pieces, stockMm, kerfMm = 0) {
+  const stock = Math.max(0, Number(stockMm) || 0);
+  const kerf = Math.max(0, Number(kerfMm) || 0);
+  const oversized = [];
+  const fit = [];
+  for (const p of pieces || []) {
+    if (!(p.overallMm > 0)) continue;
+    if (p.overallMm > stock + 1e-9) oversized.push(p);
+    else fit.push(p);
+  }
+  fit.sort((a, b) => b.overallMm - a.overallMm || (a.index || '').localeCompare(b.index || ''));
+
+  let bars = [];
+  for (const piece of fit) {
+    let best = null;
+    for (let bi = 0; bi < bars.length; bi++) {
+      const place = tryPlace(bars[bi], piece, kerf, stock);
+      if (!place) continue;
+      const leftover = stock - place.usedMm;
+      const hasSame = sharesAngle(bars[bi], piece);
+      if (
+        !best ||
+        leftover < best.leftover - 1e-6 ||
+        (Math.abs(leftover - best.leftover) < 1e-6 && hasSame && !best.hasSame)
+      ) {
+        best = { bi, place, leftover, hasSame };
+      }
+    }
+    if (best) {
+      appendPiece(bars[best.bi], piece, best.place);
+    } else {
+      const bar = { pieces: [] };
+      const place = tryPlace(bar, piece, kerf, stock);
+      if (!place) {
+        oversized.push(piece);
+        continue;
+      }
+      appendPiece(bar, piece, place);
+      bars.push(bar);
+    }
+  }
+
+  bars = emptyBars(bars, stock, kerf);
+
+  return {
+    bars: bars.map((b) => {
+      const usedMm = barUsedMm(b);
+      return {
+        pieces: b.pieces,
+        usedMm,
+        leftoverMm: Math.max(0, stock - usedMm),
+      };
+    }),
+    oversized,
+    barCount: bars.length,
+  };
 }
 
 /**
@@ -62,17 +287,233 @@ export function renderBudget(container, geom, products) {
   note.textContent = products.note;
   container.appendChild(note);
 
-  container.appendChild(
-    section('Edges (struts / cut list)', products.edgeGroups, drawStrut, 420, 210),
-  );
-  container.appendChild(
-    section('Faces (panels)', products.faceGroups, drawFace, 420, 240),
-  );
-  container.appendChild(
-    section('Vertices (Piped hubs)', products.hubGroups, drawHub, 300, 200, {
+  const tabs = [
+    { id: 'edges', label: 'Edges (struts / cut list)' },
+    { id: 'stock', label: 'Stock (timber bars)' },
+    { id: 'faces', label: 'Faces (panels)' },
+    { id: 'vertices', label: 'Vertices (Piped hubs)' },
+  ];
+
+  const tabList = document.createElement('div');
+  tabList.className = 'budget-tabs';
+  tabList.setAttribute('role', 'tablist');
+
+  const panels = document.createElement('div');
+  panels.className = 'budget-panels';
+
+  const panelById = {
+    edges: sectionPanel(products.edgeGroups, drawStrut, 420, 210),
+    stock: stockPanel(products.edgeGroups),
+    faces: sectionPanel(products.faceGroups, drawFace, 420, 240),
+    vertices: sectionPanel(products.hubGroups, drawHub, 300, 200, {
       dataAttr: 'data-hub-index',
     }),
+  };
+
+  for (const t of tabs) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'budget-tab';
+    btn.setAttribute('role', 'tab');
+    btn.dataset.tab = t.id;
+    btn.textContent = t.label;
+    tabList.appendChild(btn);
+
+    const panel = panelById[t.id];
+    panel.classList.add('budget-panel');
+    panel.dataset.tab = t.id;
+    panel.setAttribute('role', 'tabpanel');
+    panels.appendChild(panel);
+  }
+
+  const activate = (id) => {
+    activeBudgetTab = id;
+    tabList.querySelectorAll('.budget-tab').forEach((b) => {
+      const on = b.dataset.tab === id;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    panels.querySelectorAll('.budget-panel').forEach((p) => {
+      p.hidden = p.dataset.tab !== id;
+    });
+  };
+
+  tabList.addEventListener('click', (e) => {
+    const btn = e.target.closest('.budget-tab');
+    if (!btn) return;
+    activate(btn.dataset.tab);
+  });
+
+  container.appendChild(tabList);
+  container.appendChild(panels);
+  activate(
+    tabs.some((t) => t.id === activeBudgetTab) ? activeBudgetTab : 'edges',
   );
+}
+
+/** Build packing pieces from edge type groups (label angles = 90 − endCutDeg). */
+export function piecesFromEdgeGroups(groups) {
+  const pieces = [];
+  for (const g of groups || []) {
+    for (const u of g.units) {
+      const cutA = Math.round(90 - (u.endCutDegA ?? 0));
+      const cutB = Math.round(90 - (u.endCutDegB ?? 0));
+      pieces.push({
+        overallMm: strutOverallLength(
+          u.cutLength,
+          u.width,
+          u.endCutDegA,
+          u.endCutDegB,
+        ),
+        axisMm: u.cutLength,
+        widthMm: u.width,
+        cutA,
+        cutB,
+        color: g.color,
+        index: g.index,
+        edgeId: u.edgeId,
+      });
+    }
+  }
+  return pieces;
+}
+
+function renderStockBlock(container, groups, stockMm, kerfMm) {
+  container.innerHTML = '';
+  const packed = packStockBars(piecesFromEdgeGroups(groups), stockMm, kerfMm);
+
+  const summary = document.createElement('p');
+  summary.className = 'stock-summary';
+  summary.textContent = `${packed.barCount} bars × ${Math.round(stockMm)} mm`;
+  container.appendChild(summary);
+
+  if (packed.oversized.length) {
+    const warn = document.createElement('p');
+    warn.className = 'stock-warn hint';
+    const maxL = Math.max(...packed.oversized.map((p) => p.overallMm));
+    warn.textContent = `${packed.oversized.length} piece(s) longer than stock (max ${Math.round(maxL)} mm)`;
+    container.appendChild(warn);
+  }
+
+  const layout = document.createElement('div');
+  layout.className = 'stock-layout';
+  packed.bars.forEach((bar, i) => {
+    const row = document.createElement('div');
+    row.className = 'stock-bar-row';
+    const cap = document.createElement('div');
+    cap.className = 'stock-bar-cap';
+    cap.textContent = `Bar ${i + 1} · used ${Math.round(bar.usedMm)} · left ${Math.round(bar.leftoverMm)}`;
+    row.appendChild(cap);
+    const canvas = document.createElement('canvas');
+    canvas.width = 720;
+    canvas.height = 90;
+    canvas.className = 'stock-bar-canvas';
+    drawStockBar(canvas, bar, stockMm);
+    row.appendChild(canvas);
+    layout.appendChild(row);
+  });
+  container.appendChild(layout);
+}
+
+/**
+ * Draw one packed stock bar: trapezoids in stock scale, 180° flips, kerf, leftover.
+ */
+export function drawStockBar(canvas, bar, stockMm) {
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;
+  const H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, W, H);
+
+  const padL = 28;
+  const padR = 12;
+  const padT = 22;
+  const padB = 18;
+  const faceH = Math.max(22, Math.min(36, H * 0.38));
+  const yTop = padT;
+  const yBot = yTop + faceH;
+  const scaleX = (W - padL - padR) / (stockMm || 1);
+
+  // Full stock outline
+  ctx.strokeStyle = '#9aa5b1';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(padL, yTop, stockMm * scaleX, faceH);
+  ctx.fillStyle = '#f7f9fb';
+  ctx.fillRect(padL, yTop, stockMm * scaleX, faceH);
+
+  dimH(ctx, padL, padL + stockMm * scaleX, yTop - 10, `${Math.round(stockMm)}`);
+
+  for (const p of bar.pieces || []) {
+    const tipA = nestOverlapMm(p.widthMm, leftCut(p, p.flipped));
+    const tipB = nestOverlapMm(p.widthMm, rightCut(p, p.flipped));
+    const x0 = padL + p.startMm * scaleX;
+    const x1 = padL + (p.startMm + p.overallMm) * scaleX;
+    // Long edge top when not flipped; bottom when flipped 180°
+    let TL;
+    let TR;
+    let BL;
+    let BR;
+    if (!p.flipped) {
+      TL = { x: x0, y: yTop };
+      TR = { x: x1, y: yTop };
+      BL = { x: x0 + tipA * scaleX, y: yBot };
+      BR = { x: x1 - tipB * scaleX, y: yBot };
+    } else {
+      BL = { x: x0, y: yBot };
+      BR = { x: x1, y: yBot };
+      TL = { x: x0 + tipA * scaleX, y: yTop };
+      TR = { x: x1 - tipB * scaleX, y: yTop };
+    }
+
+    ctx.beginPath();
+    ctx.moveTo(TL.x, TL.y);
+    ctx.lineTo(TR.x, TR.y);
+    ctx.lineTo(BR.x, BR.y);
+    ctx.lineTo(BL.x, BL.y);
+    ctx.closePath();
+    ctx.fillStyle = hexWithAlpha(p.color, 0.22);
+    ctx.fill();
+    ctx.strokeStyle = p.color || '#666';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    const midX = (x0 + x1) / 2;
+    const midY = (yTop + yBot) / 2 + 3;
+    ctx.fillStyle = '#222';
+    ctx.font = '10px Tahoma, sans-serif';
+    ctx.textAlign = 'center';
+    const wide = (x1 - x0) > 70;
+    const label = wide
+      ? `${p.index || ''} ${Math.round(p.overallMm)} · ${Math.round(p.cutA)}°/${Math.round(p.cutB)}°`
+      : `${p.index || ''}`;
+    ctx.fillText(label.trim(), midX, midY);
+    ctx.textAlign = 'left';
+  }
+
+  if (bar.leftoverMm > 1) {
+    const lx0 = padL + bar.usedMm * scaleX;
+    const lx1 = padL + stockMm * scaleX;
+    ctx.fillStyle = 'rgba(0,0,0,0.04)';
+    ctx.fillRect(lx0, yTop, lx1 - lx0, faceH);
+    ctx.fillStyle = '#888';
+    ctx.font = '10px Tahoma, sans-serif';
+    ctx.textAlign = 'center';
+    if (lx1 - lx0 > 36) {
+      ctx.fillText(`${Math.round(bar.leftoverMm)}`, (lx0 + lx1) / 2, yBot + 12);
+    }
+    ctx.textAlign = 'left';
+  }
+}
+
+function hexWithAlpha(color, alpha) {
+  if (!color) return `rgba(120,120,120,${alpha})`;
+  // hsl(h, 78%, 52%) from palette
+  const m = /^hsl\((\d+),\s*([\d.]+)%,\s*([\d.]+)%\)$/i.exec(String(color).trim());
+  if (m) {
+    return `hsla(${m[1]}, ${m[2]}%, ${m[3]}%, ${alpha})`;
+  }
+  return color;
 }
 
 /** Outline the Vertices card for hub type `index` (A, B, …); clear if null. */
@@ -82,6 +523,10 @@ export function highlightHubCard(container, index, color) {
     el.style.removeProperty('--hub-pick-color');
   });
   if (index == null) return;
+  const verticesTab = container.querySelector('.budget-tab[data-tab="vertices"]');
+  if (verticesTab && activeBudgetTab !== 'vertices') {
+    verticesTab.click();
+  }
   const card = container.querySelector(`.product[data-hub-index="${index}"]`);
   if (!card) return;
   card.classList.add('is-hub-pick');
@@ -89,12 +534,8 @@ export function highlightHubCard(container, index, color) {
   card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-function section(title, groups, drawer, cw, ch, opts = {}) {
+function sectionPanel(groups, drawer, cw, ch, opts = {}) {
   const wrap = document.createElement('div');
-  const h = document.createElement('h2');
-  h.textContent = title;
-  wrap.appendChild(h);
-
   const ul = document.createElement('ul');
   ul.className = 'budget-list';
 
@@ -123,6 +564,66 @@ function section(title, groups, drawer, cw, ch, opts = {}) {
   }
 
   wrap.appendChild(ul);
+  return wrap;
+}
+
+function stockPanel(edgeGroups) {
+  const wrap = document.createElement('div');
+  wrap.className = 'stock-section';
+
+  if (!edgeGroups?.length) {
+    const empty = document.createElement('p');
+    empty.className = 'hint';
+    empty.textContent = 'No edge stock data.';
+    wrap.appendChild(empty);
+    return wrap;
+  }
+
+  const controls = document.createElement('div');
+  controls.className = 'stock-controls';
+
+  const stockLabel = document.createElement('label');
+  stockLabel.textContent = 'Stock length, mm';
+  const stockInput = document.createElement('input');
+  stockInput.type = 'number';
+  stockInput.min = '1';
+  stockInput.step = '1';
+  stockInput.value = String(stockLengthMm);
+  stockInput.name = 'stockLengthMm';
+  stockLabel.appendChild(stockInput);
+
+  const kerfLabel = document.createElement('label');
+  kerfLabel.textContent = 'Saw kerf, mm';
+  const kerfInput = document.createElement('input');
+  kerfInput.type = 'number';
+  kerfInput.min = '0';
+  kerfInput.step = '0.1';
+  kerfInput.value = String(sawKerfMm);
+  kerfInput.name = 'sawKerfMm';
+  kerfLabel.appendChild(kerfInput);
+
+  controls.appendChild(stockLabel);
+  controls.appendChild(kerfLabel);
+  wrap.appendChild(controls);
+
+  const stockBlock = document.createElement('div');
+  stockBlock.className = 'stock-block';
+  wrap.appendChild(stockBlock);
+
+  const refresh = () => {
+    stockLengthMm = Math.max(1, Number(stockInput.value) || DEFAULT_STOCK_MM);
+    sawKerfMm = Math.max(0, Number(kerfInput.value) || 0);
+    stockInput.value = String(stockLengthMm);
+    kerfInput.value = String(sawKerfMm);
+    renderStockBlock(stockBlock, edgeGroups, stockLengthMm, sawKerfMm);
+  };
+
+  stockInput.addEventListener('change', refresh);
+  stockInput.addEventListener('input', refresh);
+  kerfInput.addEventListener('change', refresh);
+  kerfInput.addEventListener('input', refresh);
+  refresh();
+
   return wrap;
 }
 

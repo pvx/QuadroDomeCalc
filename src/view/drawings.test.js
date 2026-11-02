@@ -5,7 +5,13 @@ import {
   layoutPanelOnSheet,
   hubRayAngles,
   OSB_SHEET_MM,
+  nestOverlapMm,
+  packStockBars,
 } from './drawings.js';
+
+function piece(overallMm, cutA, cutB, widthMm = 150, extra = {}) {
+  return { overallMm, cutA, cutB, widthMm, index: 'A', color: 'hsl(0, 78%, 52%)', ...extra };
+}
 
 describe('strutOverallLength', () => {
   it('matches cutLength when ends are square', () => {
@@ -85,5 +91,80 @@ describe('hubRayAngles', () => {
       const expect = -Math.PI / 2 + (i * Math.PI) / 2;
       assert.ok(Math.abs(angs[i] - expect) < 1e-12);
     }
+  });
+});
+
+describe('packStockBars', () => {
+  it('packs three 1638 / 80°/80° on one 6000 bar; fourth needs a second', () => {
+    const nest = nestOverlapMm(150, 80);
+    assert.ok(Math.abs(nest - 150 * Math.tan((10 * Math.PI) / 180)) < 1e-9);
+
+    const pieces = Array.from({ length: 4 }, () => piece(1638, 80, 80, 150));
+    const { bars, barCount } = packStockBars(pieces, 6000, 3);
+    assert.equal(barCount, 2);
+    assert.equal(bars[0].pieces.length, 3);
+    assert.equal(bars[1].pieces.length, 1);
+
+    const b0 = bars[0].pieces;
+    assert.equal(b0[0].flipped, false);
+    assert.equal(b0[1].flipped, true);
+    assert.equal(b0[2].flipped, false);
+
+    const naive = 3 * 1638 + 2 * 3;
+    assert.ok(bars[0].usedMm < naive - 1, `used ${bars[0].usedMm} should nest below ${naive}`);
+  });
+
+  it('does not join 80°/80° with 70°/70° on one cut', () => {
+    const a = piece(1000, 80, 80, 150);
+    const b = piece(1000, 70, 70, 150);
+    const { barCount } = packStockBars([a, b], 6000, 3);
+    assert.equal(barCount, 2);
+  });
+
+  it('combines 70 + 30 with shared 80° into two bars instead of three', () => {
+    const long = [piece(70, 80, 80, 150, { index: 'L' }), piece(70, 80, 80, 150, { index: 'L' })];
+    const short = [
+      piece(30, 80, 80, 150, { index: 'S' }),
+      piece(30, 80, 80, 150, { index: 'S' }),
+    ];
+    // Same-length-only: two 70s cannot share a 100 bar (70+70-nest > 100)
+    const onlyLong = packStockBars(long, 100, 0);
+    const onlyShort = packStockBars(short, 100, 0);
+    assert.equal(onlyLong.barCount, 2);
+    assert.equal(onlyShort.barCount, 1);
+    assert.equal(onlyLong.barCount + onlyShort.barCount, 3);
+
+    const mixed = packStockBars([...long, ...short], 100, 0);
+    assert.equal(mixed.barCount, 2);
+  });
+
+  it('square cuts: 4×4000 on 6000 need four bars', () => {
+    const pieces = Array.from({ length: 4 }, () => piece(4000, 90, 90, 150));
+    const { barCount } = packStockBars(pieces, 6000, 0);
+    assert.equal(barCount, 4);
+  });
+
+  it('does not add kerf for a single piece', () => {
+    const { bars, barCount } = packStockBars([piece(5900, 90, 90)], 6000, 50);
+    assert.equal(barCount, 1);
+    assert.equal(bars[0].usedMm, 5900);
+  });
+
+  it('leaves oversized pieces out of the bar count', () => {
+    const { barCount, oversized } = packStockBars(
+      [piece(7000, 80, 80), piece(1000, 80, 80)],
+      6000,
+      3,
+    );
+    assert.equal(barCount, 1);
+    assert.equal(oversized.length, 1);
+    assert.equal(oversized[0].overallMm, 7000);
+  });
+
+  it('returns 0 bars for an empty list', () => {
+    const { barCount, bars, oversized } = packStockBars([], 6000, 3);
+    assert.equal(barCount, 0);
+    assert.equal(bars.length, 0);
+    assert.equal(oversized.length, 0);
   });
 });
