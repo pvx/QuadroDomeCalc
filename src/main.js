@@ -4,7 +4,8 @@ import { computeLoads } from './geom/loads.js';
 import { createScene } from './view/scene.js';
 import { renderBudget, highlightHubCard } from './view/drawings.js';
 import { buildReport } from './report/stats.js';
-import { bindForm, readParams } from './ui/form.js';
+import { applyShare, bindForm, readParams } from './ui/form.js';
+import { encodeSharePath, parseSharePath } from './ui/share.js';
 import { downloadOBJ, downloadModelOBJ } from './export/obj.js';
 
 const form = document.getElementById('options');
@@ -153,5 +154,26 @@ document.getElementById('btn-model-obj').addEventListener('click', () => {
   );
 });
 
-bindForm(form, recalculate);
-recalculate(readParams(form));
+function syncShareUrl(params) {
+  const path = encodeSharePath(params);
+  if (window.location.pathname !== path) {
+    history.replaceState(null, '', path);
+  }
+}
+
+bindForm(form, (params) => {
+  recalculate(params);
+  syncShareUrl(params);
+});
+
+try {
+  const shared = parseSharePath(window.location.pathname);
+  if (shared) applyShare(form, shared);
+} catch (err) {
+  errorEl.hidden = false;
+  errorEl.textContent = err.message || String(err);
+}
+
+const initial = readParams(form);
+recalculate(initial);
+syncShareUrl(initial);

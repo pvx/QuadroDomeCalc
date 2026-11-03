@@ -72,6 +72,50 @@ export function readParams(form) {
   };
 }
 
+/**
+ * Apply a share-path patch onto form fields.
+ * Clears autoH / aFromDiag so shared a/b/h are not overwritten.
+ * @param {HTMLFormElement} form
+ * @param {Record<string, number|boolean>} patch
+ */
+export function applyShare(form, patch) {
+  if (!patch || typeof patch !== 'object') return;
+
+  const setNum = (name, v) => {
+    if (v == null || !Number.isFinite(v)) return;
+    el(form, name).value = String(v);
+  };
+
+  if ('a' in patch || 'b' in patch || 'h' in patch) {
+    el(form, 'aFromDiag').checked = false;
+    el(form, 'autoH').checked = false;
+  }
+
+  setNum('a', patch.a);
+  setNum('b', patch.b);
+  setNum('h', patch.h);
+  if (patch.n != null && Number.isFinite(patch.n)) {
+    el(form, 'n').value = String(Math.floor(patch.n));
+  }
+  setNum('beamsWidth', patch.beamsWidth);
+  setNum('beamsThickness', patch.beamsThickness);
+  setNum('osbThicknessMm', patch.osbThicknessMm);
+  setNum('osbFaceHeightMm', patch.osbFaceHeightMm);
+  setNum('panelGapMm', patch.panelGapMm);
+  setNum('pipeD', patch.pipeD);
+  setNum('pipeLengthMm', patch.pipeLengthMm);
+  setNum('hubGapMm', patch.hubGapMm);
+  if (typeof patch.supportBrace === 'boolean') {
+    el(form, 'supportBrace').checked = patch.supportBrace;
+  }
+
+  if ('a' in patch || 'b' in patch) {
+    const a = num(el(form, 'a').value, 0);
+    const b = num(el(form, 'b').value, a);
+    el(form, 'diagonalOnAxes').value = round2(Math.hypot(a, b));
+  }
+}
+
 export function bindForm(form, onChange) {
   const defaults = defaultAssumptionsMm();
   el(form, 'a').value = round1(defaults.a);
