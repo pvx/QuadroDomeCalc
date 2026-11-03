@@ -7,6 +7,15 @@ import {
   OSB_SHEET_MM,
   nestOverlapMm,
   packStockBars,
+  earTrapezoid,
+  earPairLengthMm,
+  earPerimeterMm,
+  earSlantLenMm,
+  earSheetsCutLengthMm,
+  earHoleCenters,
+  earsFromEdgeProducts,
+  hubColorByNodeFromGroups,
+  packEarSheets,
 } from './drawings.js';
 
 function piece(overallMm, cutA, cutB, widthMm = 150, extra = {}) {
@@ -185,5 +194,241 @@ describe('packStockBars', () => {
     assert.equal(barCount, 0);
     assert.equal(bars.length, 0);
     assert.equal(oversized.length, 0);
+  });
+});
+
+function makeEar(endCutDeg, lengthMm = 200, widthMm = 150) {
+  const t = earTrapezoid(lengthMm, widthMm, endCutDeg);
+  return {
+    edgeId: 0,
+    endCutDeg,
+    lengthMm: t.L,
+    widthMm: t.W,
+    shortMm: t.S,
+    areaMm2: t.area,
+    valid: t.valid,
+  };
+}
+
+describe('earTrapezoid', () => {
+  it('α = 0 is a rectangle with area L·W', () => {
+    const t = earTrapezoid(200, 150, 0);
+    assert.equal(t.S, 200);
+    assert.equal(t.area, 200 * 150);
+    assert.ok(t.valid);
+  });
+
+  it('α = 45°, W = 100, L = 200 → S = 100', () => {
+    const t = earTrapezoid(200, 100, 45);
+    assert.ok(Math.abs(t.S - 100) < 1e-9);
+    assert.ok(t.valid);
+  });
+
+  it('marks invalid when short side ≤ 0', () => {
+    const t = earTrapezoid(100, 150, 45);
+    assert.ok(t.S <= 0);
+    assert.equal(t.valid, false);
+  });
+});
+
+describe('earPairLengthMm', () => {
+  it('α = 0, g = 0 → pair length 2L', () => {
+    assert.equal(earPairLengthMm(200, 150, 0, 0), 400);
+  });
+
+  it('α = 45°, W = 100, L = 200, g = 0 → pair length 300', () => {
+    assert.ok(Math.abs(earPairLengthMm(200, 100, 45, 0) - 300) < 1e-9);
+  });
+
+  it('g = 3, α = 0 → pair length 2L + 3', () => {
+    assert.equal(earPairLengthMm(200, 150, 0, 3), 403);
+  });
+
+  it('g = 3, α = 45° → adds 3/cos(45°)', () => {
+    const add = 3 / Math.cos((45 * Math.PI) / 180);
+    const got = earPairLengthMm(200, 100, 45, 3);
+    assert.ok(Math.abs(got - (300 + add)) < 1e-9);
+  });
+});
+
+describe('earHoleCenters', () => {
+  it('places C holes at k·L/(C+1) when α = 0', () => {
+    const holes = earHoleCenters(200, 150, 2, 12, 0);
+    assert.equal(holes.length, 2);
+    assert.ok(Math.abs(holes[0].x - 200 / 3) < 1e-9);
+    assert.ok(Math.abs(holes[1].x - 400 / 3) < 1e-9);
+    assert.equal(holes[0].y, 75);
+    assert.equal(holes[0].r, 6);
+  });
+
+  it('spaces holes along short side S away from the slant', () => {
+    // L=200, W=100, α=45° → S=100
+    const holes = earHoleCenters(200, 100, 2, 12, 45);
+    assert.equal(holes.length, 2);
+    assert.ok(Math.abs(holes[0].x - 100 / 3) < 1e-9);
+    assert.ok(Math.abs(holes[1].x - 200 / 3) < 1e-9);
+    assert.ok(holes[1].x < 100);
+  });
+});
+
+describe('earsFromEdgeProducts', () => {
+  it('emits one ear per strut end', () => {
+    const edges = [
+      { edgeId: 1, endCutDegA: 10, endCutDegB: 12 },
+      { edgeId: 2, endCutDegA: 0, endCutDegB: 5 },
+    ];
+    const ears = earsFromEdgeProducts(edges, 200, 150);
+    assert.equal(ears.length, 4);
+    assert.equal(ears[0].endCutDeg, 10);
+    assert.equal(ears[1].endCutDeg, 12);
+  });
+
+  it('tags each ear with hub node color', () => {
+    const edges = [
+      { edgeId: 1, startNodeId: 3, endNodeId: 7, endCutDegA: 10, endCutDegB: 12 },
+    ];
+    const colors = new Map([
+      [3, 'hsl(0, 78%, 52%)'],
+      [7, 'hsl(47, 78%, 52%)'],
+    ]);
+    const ears = earsFromEdgeProducts(edges, 200, 150, colors);
+    assert.equal(ears[0].hubNodeId, 3);
+    assert.equal(ears[0].hubColor, 'hsl(0, 78%, 52%)');
+    assert.equal(ears[1].hubNodeId, 7);
+    assert.equal(ears[1].hubColor, 'hsl(47, 78%, 52%)');
+  });
+});
+
+describe('hubColorByNodeFromGroups', () => {
+  it('maps unit id → group color', () => {
+    const map = hubColorByNodeFromGroups([
+      { color: 'red', units: [{ id: 1 }, { id: 2 }] },
+      { color: 'blue', units: [{ id: 5 }] },
+    ]);
+    assert.equal(map.get(1), 'red');
+    assert.equal(map.get(5), 'blue');
+  });
+});
+
+describe('packEarSheets', () => {
+  it('packs four identical ears on a large sheet → 1 sheet', () => {
+    const ears = [0, 0, 0, 0].map((a) => makeEar(a));
+    const packed = packEarSheets(ears, 1500, 3000, 0);
+    assert.equal(packed.sheetCount, 1);
+    assert.equal(packed.oversized.length, 0);
+    assert.equal(packed.invalid.length, 0);
+    const n = packed.sheets[0].placements.reduce(
+      (s, p) => s + p.ears.length,
+      0,
+    );
+    assert.equal(n, 4);
+  });
+
+  it('single ear uses L×W bbox', () => {
+    const packed = packEarSheets([makeEar(0)], 1500, 3000, 0);
+    assert.equal(packed.sheetCount, 1);
+    assert.equal(packed.sheets[0].placements.length, 1);
+    const pl = packed.sheets[0].placements[0];
+    assert.equal(pl.kind, 'single');
+    assert.equal(pl.boxW, 200);
+    assert.equal(pl.boxH, 150);
+  });
+
+  it('marks oversized when ear exceeds both sheet sides', () => {
+    const ears = [makeEar(0, 4000, 2000)];
+    const packed = packEarSheets(ears, 1500, 3000, 0);
+    assert.equal(packed.sheetCount, 0);
+    assert.equal(packed.oversized.length, 1);
+  });
+
+  it('pair area matches two trapezoids; scrap uses sheet area', () => {
+    const ears = [makeEar(0), makeEar(0)];
+    const packed = packEarSheets(ears, 1500, 3000, 0);
+    assert.equal(packed.totalAreaMm2, 2 * 200 * 150);
+    assert.equal(packed.sheetCount, 1);
+    const expectedScrap =
+      (1500 * 3000 - packed.totalAreaMm2) / (1500 * 3000);
+    assert.ok(Math.abs(packed.scrapRatio - expectedScrap) < 1e-12);
+  });
+
+  it('invalid ears stay out of sheets', () => {
+    const ears = [makeEar(45, 100, 150)];
+    const packed = packEarSheets(ears, 1500, 3000, 0);
+    assert.equal(packed.invalid.length, 1);
+    assert.equal(packed.sheetCount, 0);
+  });
+
+  it('cut length shares slant and sides when gap = 0', () => {
+    // One nested pair, α=0 → rectangle 400×150; perimeter each = 2*(200+150)=700
+    // Shared slant when α=0 is the short vertical? α=0 slant = W = 150
+    const ears = [makeEar(0), makeEar(0)];
+    const withGap = packEarSheets(ears, 1500, 3000, 3, {
+      count: 0,
+      diameterMm: 0,
+    });
+    const noGap = packEarSheets(ears, 1500, 3000, 0, {
+      count: 0,
+      diameterMm: 0,
+    });
+    const peri = earPerimeterMm(200, 150, 0);
+    assert.equal(peri, 700);
+    assert.equal(earSlantLenMm(200, 150, 0), 150);
+    // g>0: both full perimeters
+    assert.ok(Math.abs(withGap.cutLengthMm - 2 * peri) < 1e-6);
+    // g=0: minus shared slant once
+    assert.ok(Math.abs(noGap.cutLengthMm - (2 * peri - 150)) < 1e-6);
+  });
+
+  it('cut length shares touching pair sides when gap = 0', () => {
+    // Two α=0 pairs on one row → touch on vertical W=150
+    const ears = [0, 0, 0, 0].map((a) => makeEar(a));
+    const packed = packEarSheets(ears, 1500, 3000, 0, {
+      count: 0,
+      diameterMm: 0,
+    });
+    const peri = earPerimeterMm(200, 150, 0);
+    const slant = earSlantLenMm(200, 150, 0);
+    // 4 ears, 2 pairs → −2 slants; pairs touch → −1 side W
+    const expected = 4 * peri - 2 * slant - 150;
+    assert.ok(Math.abs(packed.cutLengthMm - expected) < 1e-6);
+    assert.ok(
+      Math.abs(
+        earSheetsCutLengthMm(packed.sheets, 0, 0, 0) - packed.cutLengthMm,
+      ) < 1e-9,
+    );
+  });
+
+  it('fills row residual with shorter pairs instead of leaving a gap', () => {
+    // α=0 → pair 400; α=45°, W=150 → pair 250. Sheet 1100: 2×400 leaves 300.
+    const L = 200;
+    const W = 150;
+    const longs = Array.from({ length: 6 }, () => makeEar(0, L, W)); // 3 pairs
+    const shorts = Array.from({ length: 2 }, () => makeEar(45, L, W)); // 1 pair
+    const sheetW = 1100;
+    const packed = packEarSheets([...longs, ...shorts], sheetW, 3000, 0);
+    assert.equal(packed.sheetCount, 1);
+    assert.equal(packed.oversized.length, 0);
+
+    const shortPair = earPairLengthMm(L, W, 45, 0);
+    assert.ok(Math.abs(shortPair - 250) < 1e-9);
+
+    const rows = new Map();
+    for (const pl of packed.sheets[0].placements) {
+      const key = Math.round(pl.y * 10) / 10;
+      if (!rows.has(key)) rows.set(key, []);
+      rows.get(key).push(pl);
+    }
+    const mixed = [...rows.values()].filter(
+      (pls) =>
+        pls.some((p) => p.alpha === 0) && pls.some((p) => p.alpha === 45),
+    );
+    assert.ok(mixed.length >= 1, 'short pair should fill a long-pair row gap');
+    for (const pls of mixed) {
+      const used = pls.reduce((s, p) => s + p.boxW, 0);
+      assert.ok(
+        sheetW - used < shortPair - 1e-6,
+        `mixed row leftover ${sheetW - used} still fits short pair`,
+      );
+    }
   });
 });
