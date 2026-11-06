@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   strutOverallLength,
+  edgeCutListJson,
   layoutPanelOnSheet,
   hubRayAngles,
   OSB_SHEET_MM,
@@ -37,6 +38,29 @@ describe('strutOverallLength', () => {
       (w / 2) *
         (Math.tan((a * Math.PI) / 180) + Math.tan((b * Math.PI) / 180));
     assert.ok(Math.abs(strutOverallLength(L, w, a, b) - expected) < 1e-9);
+  });
+});
+
+describe('edgeCutListJson', () => {
+  it('emits string fields; length is overall', () => {
+    const groups = [
+      {
+        index: 'A',
+        count: 4,
+        sample: {
+          cutLength: 1200,
+          width: 200,
+          endCutDegA: 10,
+          endCutDegB: 15,
+        },
+      },
+    ];
+    const overall = Math.round(strutOverallLength(1200, 200, 10, 15));
+    const data = JSON.parse(edgeCutListJson(groups, 6000));
+    assert.deepEqual(data, {
+      r: '6000',
+      rows: [{ name: 'A', length: String(overall), qty: '4' }],
+    });
   });
 });
 

@@ -894,7 +894,7 @@ export function renderBudget(container, geom, products) {
   panels.className = 'budget-panels';
 
   const panelById = {
-    edges: sectionPanel(products.edgeGroups, drawStrut, 420, 210),
+    edges: edgesPanel(products.edgeGroups),
     stock: stockPanel(products.edgeGroups),
     ears: earsPanel(products.edgeProducts, products.hubGroups),
     faces: sectionPanel(products.faceGroups, drawFace, 420, 240),
@@ -941,6 +941,31 @@ export function renderBudget(container, geom, products) {
   container.appendChild(panels);
   activate(
     tabs.some((t) => t.id === activeBudgetTab) ? activeBudgetTab : 'edges',
+  );
+}
+
+/**
+ * Edges cut list as JSON: stock length `r` + rows { name, length, qty } (all strings).
+ * `length` = overall strut envelope (same «len.» as the Edges cards).
+ */
+export function edgeCutListJson(edgeGroups, stockMm) {
+  return JSON.stringify(
+    {
+      r: String(Math.round(Number(stockMm) || 0)),
+      rows: (edgeGroups || []).map((g) => {
+        const s = g.sample;
+        const length = Math.round(
+          strutOverallLength(s.cutLength, s.width, s.endCutDegA, s.endCutDegB),
+        );
+        return {
+          name: String(g.index),
+          length: String(length),
+          qty: String(g.count),
+        };
+      }),
+    },
+    null,
+    2,
   );
 }
 
@@ -1133,6 +1158,35 @@ export function highlightHubCard(container, index, color) {
   card.classList.add('is-hub-pick');
   if (color) card.style.setProperty('--hub-pick-color', color);
   card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function downloadText(text, filename) {
+  const blob = new Blob([text], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function edgesPanel(edgeGroups) {
+  const wrap = sectionPanel(edgeGroups, drawStrut, 420, 210);
+  const controls = document.createElement('div');
+  controls.className = 'stock-controls';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'linkish';
+  btn.textContent = 'Export JSON';
+  btn.addEventListener('click', () => {
+    downloadText(
+      edgeCutListJson(edgeGroups, stockLengthMm),
+      'quadro-edges-cutlist.json',
+    );
+  });
+  controls.appendChild(btn);
+  wrap.prepend(controls);
+  return wrap;
 }
 
 function sectionPanel(groups, drawer, cw, ch, opts = {}) {
